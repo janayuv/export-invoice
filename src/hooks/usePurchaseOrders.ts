@@ -13,6 +13,16 @@ export interface POItem {
   total_amount: number;
 }
 
+/** List row for invoice PO picker (customer-scoped). */
+export interface PurchaseOrderSummary {
+  id: number;
+  po_number: string;
+  customer_po_no: string;
+  po_date: string;
+  status: PurchaseOrder["status"];
+  currency: string;
+}
+
 export interface PurchaseOrder {
   id: number;
   po_number: string;
@@ -20,6 +30,7 @@ export interface PurchaseOrder {
   customer_id: number | null;
   customer_name: string;
   customer_address: string;
+  customer_po_no: string;
   delivery_date: string;
   delivery_address: string;
   payment_terms: string;
@@ -36,6 +47,33 @@ export type POFormValues = Omit<
   PurchaseOrder,
   "id" | "created_at" | "items"
 > & { items: POItem[] };
+
+/** Trim text fields and recompute line totals without altering qty/unit/price values. */
+export function normalizePOFormValues(data: POFormValues): POFormValues {
+  return {
+    ...data,
+    customer_po_no: data.customer_po_no.trim(),
+    payment_terms: data.payment_terms.trim(),
+    notes: data.notes.trim(),
+    customer_name: data.customer_name.trim(),
+    customer_address: data.customer_address.trim(),
+    delivery_address: data.delivery_address.trim(),
+    items: data.items.map((item, index) => {
+      const quantity = Number(item.quantity);
+      const unit_price = Number(item.unit_price);
+      return {
+        ...item,
+        sr_no: index + 1,
+        part_number: item.part_number.trim(),
+        description: item.description.trim(),
+        unit: item.unit.trim(),
+        quantity,
+        unit_price,
+        total_amount: quantity * unit_price,
+      };
+    }),
+  };
+}
 
 function getFiscalYear(date: Date) {
   const year = date.getFullYear();
@@ -73,7 +111,7 @@ export function usePurchaseOrders() {
       setLoading(true);
       const db = await getDb();
       const rows = await db.select<PurchaseOrder[]>(
-        `SELECT id, po_number, po_date, customer_name, currency, status, created_at
+        `SELECT id, po_number, po_date, customer_name, customer_po_no, currency, status, created_at
          FROM purchase_orders ORDER BY created_at DESC`
       );
       setOrders(rows);
@@ -105,26 +143,41 @@ export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null
   return po;
 }
 
+/** Purchase orders linked to a customer master record (for invoice create/edit). */
+export async function getPurchaseOrdersByCustomerId(
+  customerId: number
+): Promise<PurchaseOrderSummary[]> {
+  const db = await getDb();
+  return db.select<PurchaseOrderSummary[]>(
+    `SELECT id, po_number, customer_po_no, po_date, status, currency
+     FROM purchase_orders
+     WHERE customer_id = ?
+     ORDER BY created_at DESC`,
+    [customerId]
+  );
+}
+
 export async function createPurchaseOrder(
   data: POFormValues,
   createdBy?: number
 ): Promise<number> {
+  const payload = normalizePOFormValues(data);
   const db = await getDb();
   const result = await db.execute(
     `INSERT INTO purchase_orders (
       po_number, po_date, customer_id, customer_name, customer_address,
-      delivery_date, delivery_address, payment_terms,
+      customer_po_no, delivery_date, delivery_address, payment_terms,
       currency, exchange_rate, notes, status, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
-      data.po_number, data.po_date, data.customer_id, data.customer_name,
-      data.customer_address, data.delivery_date,
-      data.delivery_address, data.payment_terms, data.currency,
-      data.exchange_rate, data.notes, data.status, createdBy ?? null,
+      payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
+      payload.customer_address, payload.customer_po_no, payload.delivery_date,
+      payload.delivery_address, payload.payment_terms, payload.currency,
+      payload.exchange_rate, payload.notes, payload.status, createdBy ?? null,
     ]
   );
   const poId = result.lastInsertId ?? 0;
-  for (const item of data.items) {
+  for (const item of payload.items) {
     await db.execute(
       `INSERT INTO purchase_order_items (
         po_id, sr_no, part_number, description, quantity, unit, unit_price, total_amount
@@ -140,23 +193,24 @@ export async function updatePurchaseOrder(
   id: number,
   data: POFormValues
 ): Promise<void> {
+  const payload = normalizePOFormValues(data);
   const db = await getDb();
   await db.execute(
     `UPDATE purchase_orders SET
       po_number=$1, po_date=$2, customer_id=$3, customer_name=$4,
-      customer_address=$5, delivery_date=$6,
-      delivery_address=$7, payment_terms=$8, currency=$9,
-      exchange_rate=$10, notes=$11, status=$12, updated_at=datetime('now')
-    WHERE id=$13`,
+      customer_address=$5, customer_po_no=$6, delivery_date=$7,
+      delivery_address=$8, payment_terms=$9, currency=$10,
+      exchange_rate=$11, notes=$12, status=$13, updated_at=datetime('now')
+    WHERE id=$14`,
     [
-      data.po_number, data.po_date, data.customer_id, data.customer_name,
-      data.customer_address, data.delivery_date,
-      data.delivery_address, data.payment_terms, data.currency,
-      data.exchange_rate, data.notes, data.status, id,
+      payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
+      payload.customer_address, payload.customer_po_no, payload.delivery_date,
+      payload.delivery_address, payload.payment_terms, payload.currency,
+      payload.exchange_rate, payload.notes, payload.status, id,
     ]
   );
   await db.execute("DELETE FROM purchase_order_items WHERE po_id = ?", [id]);
-  for (const item of data.items) {
+  for (const item of payload.items) {
     await db.execute(
       `INSERT INTO purchase_order_items (
         po_id, sr_no, part_number, description, quantity, unit, unit_price, total_amount

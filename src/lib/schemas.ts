@@ -24,6 +24,7 @@ export const invoiceItemSchema = z.object({
   marks_nos: z.string(),
   no_of_pkgs: z.string(),
   dimensions: z.string(),
+  dimensions_unit: z.string(),
   part_number: z.string(),
   description: z.string().min(1, "Description is required"),
   quantity: z.number().positive("Quantity must be positive"),
@@ -53,13 +54,50 @@ export const invoiceFormSchema = z.object({
   port_of_discharge: z.string(),
   final_destination: z.string(),
   terms_of_payment: z.string(),
+  incoterm: z.string(),
   currency: z.enum(["USD", "EUR", "GBP", "AED", "INR"]),
   exchange_rate: z.number().positive(),
   net_weight: z.string(),
   gross_weight: z.string(),
   notes: z.string(),
   status: z.enum(["draft", "final"]),
+  purchase_order_id: z.number().int().nullable().optional(),
   items: z.array(invoiceItemSchema).min(1, "At least one item is required"),
 });
 
 export type InvoiceFormSchema = z.infer<typeof invoiceFormSchema>;
+
+/** Line item as received on the customer's purchase order. */
+export const poItemSchema = z.object({
+  sr_no: z.number().int().positive(),
+  part_number: z.string(),
+  description: z.string().min(1, "Description is required"),
+  quantity: z.number().positive("Quantity must be positive"),
+  unit: z.string().min(1, "Unit is required"),
+  unit_price: z.number().nonnegative("Unit price cannot be negative"),
+  total_amount: z.number().nonnegative(),
+});
+
+/** Header + items for purchase orders tied to a customer master record. */
+export const poFormSchema = z.object({
+  po_number: z.string().min(1),
+  po_date: z.string().min(1, "PO date is required"),
+  customer_id: z
+    .number()
+    .int()
+    .positive("Select a customer from the master list"),
+  customer_name: z.string().min(1, "Customer name is required"),
+  customer_address: z.string(),
+  customer_po_no: z.string().min(1, "Customer PO number is required"),
+  delivery_date: z.string(),
+  delivery_address: z.string(),
+  payment_terms: z.string(),
+  currency: z.enum(["INR", "USD", "EUR", "GBP", "AED"]),
+  exchange_rate: z.number().positive(),
+  notes: z.string(),
+  status: z.enum(["draft", "confirmed", "closed"]),
+  created_by: z.number().nullable(),
+  items: z.array(poItemSchema).min(1, "At least one line item is required"),
+});
+
+export type POFormSchema = z.infer<typeof poFormSchema>;

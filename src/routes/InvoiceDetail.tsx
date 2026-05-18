@@ -10,6 +10,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { exportInvoicePdf } from "@/lib/pdf";
 import { exportInvoiceExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
+import { canEditInvoiceByStatus } from "@/lib/auth";
 import type { Invoice } from "@/lib/types";
 
 export function InvoiceDetail() {
@@ -80,6 +81,8 @@ export function InvoiceDetail() {
   }
 
   const isFinal = invoice.status === "final";
+  const canEdit =
+    currentUser != null && canEditInvoiceByStatus(currentUser.role, invoice.status);
 
   return (
     <div className="p-4 space-y-4">
@@ -100,7 +103,7 @@ export function InvoiceDetail() {
           </div>
         </div>
         <div className="flex gap-2">
-          {!isFinal && can("edit_invoice") && (
+          {canEdit && (
             <Button
               variant="outline"
               size="sm"

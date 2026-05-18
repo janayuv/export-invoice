@@ -44,12 +44,14 @@ export interface Invoice {
   port_of_discharge: string;
   final_destination: string;
   terms_of_payment: string;
+  incoterm: string;
   currency: Currency;
   exchange_rate: number;
   net_weight: string;
   gross_weight: string;
   notes: string;
   status: InvoiceStatus;
+  purchase_order_id?: number | null;
   created_at: string;
   updated_at: string;
   items?: InvoiceItem[];
@@ -62,6 +64,7 @@ export interface InvoiceItem {
   marks_nos: string;
   no_of_pkgs: string;
   dimensions: string;
+  dimensions_unit: string;
   part_number: string;
   description: string;
   quantity: number;

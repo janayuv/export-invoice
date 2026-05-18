@@ -233,6 +233,7 @@ pub fn get_migrations() -> Vec<Migration> {
         Migration {
             version: 10,
             description: "po_replace_supplier_with_customer",
+            // Links each PO to customers(id); name/address are denormalized snapshots at save time.
             sql: r#"
                 ALTER TABLE purchase_orders ADD COLUMN customer_id INTEGER REFERENCES customers(id);
                 ALTER TABLE purchase_orders ADD COLUMN customer_name TEXT NOT NULL DEFAULT '';
@@ -241,6 +242,42 @@ pub fn get_migrations() -> Vec<Migration> {
                 ALTER TABLE purchase_orders DROP COLUMN supplier_name;
                 ALTER TABLE purchase_orders DROP COLUMN supplier_address;
                 ALTER TABLE purchase_orders DROP COLUMN supplier_gstin;
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "add_purchase_order_id_to_invoices",
+            // Optional FK for a future invoice-from-PO flow; not used by the PO entry UI.
+            sql: r#"
+                ALTER TABLE invoices ADD COLUMN purchase_order_id INTEGER REFERENCES purchase_orders(id);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "add_customer_po_no_to_purchase_orders",
+            // Customer's own PO number (as on their document), separate from internal po_number sequence.
+            sql: r#"
+                ALTER TABLE purchase_orders ADD COLUMN customer_po_no TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "add_incoterm_to_invoices",
+            // Incoterms 2020 delivery term selected per invoice (e.g. EXW, FOB, CIF).
+            sql: r#"
+                ALTER TABLE invoices ADD COLUMN incoterm TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "add_dimensions_unit_to_invoice_items",
+            // Per-line packing dimensions unit (MM, CM, INCH). Empty for legacy rows.
+            sql: r#"
+                ALTER TABLE invoice_items ADD COLUMN dimensions_unit TEXT NOT NULL DEFAULT '';
             "#,
             kind: MigrationKind::Up,
         },

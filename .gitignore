@@ -1,3 +1,14 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Scratch / preview artifacts
+sidebar-bundle/
+sidebar-bundle.zip
+sidebar-preview.html
+sidebar-preview.html.artifact.json
+*.png
+
 # SQLite database (local data)
 *.db
 *.db-shm

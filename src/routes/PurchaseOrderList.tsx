@@ -29,6 +29,7 @@ export function PurchaseOrderList() {
     const q = search.toLowerCase();
     return (
       o.po_number.toLowerCase().includes(q) ||
+      (o.customer_po_no ?? "").toLowerCase().includes(q) ||
       o.customer_name.toLowerCase().includes(q)
     );
   });
@@ -55,7 +56,7 @@ export function PurchaseOrderList() {
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-8"
-          placeholder="Search PO number or customer…"
+          placeholder="Search customer PO, internal ref, or customer…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -65,7 +66,8 @@ export function PurchaseOrderList() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>PO Number</TableHead>
+              <TableHead>Customer PO No</TableHead>
+              <TableHead>Internal Ref</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Currency</TableHead>
@@ -79,7 +81,8 @@ export function PurchaseOrderList() {
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => navigate(`/purchase-orders/${o.id}`)}
               >
-                <TableCell className="font-medium">{o.po_number}</TableCell>
+                <TableCell className="font-medium">{o.customer_po_no || "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{o.po_number}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{o.po_date}</TableCell>
                 <TableCell>{o.customer_name || "—"}</TableCell>
                 <TableCell className="text-sm">{o.currency}</TableCell>
@@ -92,7 +95,7 @@ export function PurchaseOrderList() {
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
                   {search ? "No orders match your search" : "No purchase orders yet"}
                 </TableCell>
               </TableRow>

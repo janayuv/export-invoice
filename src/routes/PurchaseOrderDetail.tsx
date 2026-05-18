@@ -13,6 +13,7 @@ import {
 } from "@/hooks/usePurchaseOrders";
 import { useSettings } from "@/hooks/useSettings";
 import { useAuth } from "@/contexts/AuthContext";
+import { canEditPurchaseOrderByStatus } from "@/lib/auth";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   draft: "secondary",
@@ -24,7 +25,7 @@ export function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { settings } = useSettings();
-  const { can } = useAuth();
+  const { can, currentUser } = useAuth();
   const [po, setPo] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +73,8 @@ export function PurchaseOrderDetail() {
   const totalAmount = items.reduce((s, i) => s + i.total_amount, 0);
   const isDraft = po.status === "draft";
   const isConfirmed = po.status === "confirmed";
+  const canEdit =
+    currentUser != null && canEditPurchaseOrderByStatus(currentUser.role, po.status);
 
   return (
     <div className="p-6 space-y-5 max-w-4xl">
@@ -83,16 +86,19 @@ export function PurchaseOrderDetail() {
           </Button>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-lg">{po.po_number}</span>
+              <span className="font-bold text-lg">{po.customer_po_no || po.po_number}</span>
               <Badge variant={STATUS_VARIANT[po.status] ?? "secondary"}>
                 {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">Date: {po.po_date}</p>
+            <p className="text-xs text-muted-foreground">
+              PO date: {po.po_date}
+              {po.po_number ? ` · Internal ref: ${po.po_number}` : ""}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
-          {isDraft && can("edit_invoice") && (
+          {canEdit && (
             <Button variant="outline" size="sm" onClick={() => navigate(`/purchase-orders/${po.id}/edit`)}>
               <Edit size={14} className="mr-1" /> Edit
             </Button>
@@ -135,7 +141,8 @@ export function PurchaseOrderDetail() {
           </div>
           {/* PO details */}
           <div className="p-4 space-y-1.5">
-            <Row label="PO Number" value={po.po_number} />
+            <Row label="Customer PO No" value={po.customer_po_no || "—"} />
+            <Row label="Internal Ref" value={po.po_number} />
             <Row label="PO Date" value={po.po_date} />
             {po.delivery_date && <Row label="Expiry Date" value={po.delivery_date} />}
             {po.payment_terms && <Row label="Payment Terms" value={po.payment_terms} />}

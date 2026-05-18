@@ -1,14 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Save, CheckCircle } from "lucide-react";
+import {
+  Save,
+  CheckCircle,
+  UserCheck,
+  FileText,
+  FilePlus2,
+  Users,
+  Ship,
+  Package,
+  Boxes,
+  Scale,
+  ArrowLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -16,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LineItemsTable } from "@/components/LineItemsTable";
+import { GoodsItemsTable, PackingItemsTable } from "@/components/LineItemsTable";
 import { invoiceFormSchema, type InvoiceFormSchema } from "@/lib/schemas";
 import {
   generateInvoiceNumber,
@@ -26,19 +38,51 @@ import {
 } from "@/hooks/useInvoices";
 import { useSettings } from "@/hooks/useSettings";
 import { useAuth } from "@/contexts/AuthContext";
-import { type Customer, getCustomers } from "@/lib/customer";
+import { canEditInvoiceByStatus } from "@/lib/auth";
+import { type Customer, getCustomer, getCustomers } from "@/lib/customer";
+import { mapPurchaseOrderToInvoiceFields } from "@/lib/invoiceFromPo";
+import {
+  getPurchaseOrder,
+  getPurchaseOrdersByCustomerId,
+  type PurchaseOrderSummary,
+} from "@/hooks/usePurchaseOrders";
 import { Combobox } from "@/components/ui/combobox";
-import { UserCheck } from "lucide-react";
+
+const PO_SELECT_NONE = "__none__";
+
+const INCOTERM_OPTIONS: { value: string; label: string }[] = [
+  { value: "EXW", label: "EXW — Ex Works" },
+  { value: "FCA", label: "FCA — Free Carrier" },
+  { value: "FAS", label: "FAS — Free Alongside Ship" },
+  { value: "FOB", label: "FOB — Free On Board" },
+  { value: "CFR", label: "CFR — Cost and Freight" },
+  { value: "CIF", label: "CIF — Cost, Insurance and Freight" },
+  { value: "CPT", label: "CPT — Carriage Paid To" },
+  { value: "CIP", label: "CIP — Carriage and Insurance Paid To" },
+  { value: "DAP", label: "DAP — Delivered at Place" },
+  { value: "DPU", label: "DPU — Delivered at Place Unloaded" },
+  { value: "DDP", label: "DDP — Delivered Duty Paid" },
+];
 
 export function InvoiceNew() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const { settings } = useSettings();
-  const { currentUser } = useAuth();
+  const { currentUser, can } = useAuth();
+  const [editingStatus, setEditingStatus] = useState<"draft" | "final" | null>(null);
   const [generatedNumber, setGeneratedNumber] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [customerPOs, setCustomerPOs] = useState<PurchaseOrderSummary[]>([]);
+  const [selectedPoId, setSelectedPoId] = useState<string>("");
+  const [loadingPOs, setLoadingPOs] = useState(false);
+  const editFormLoadedRef = useRef(false);
+  const editPickerSyncedRef = useRef(false);
+  const editPickerMetaRef = useRef<{
+    purchaseOrderId: number | null;
+    consigneeName: string;
+  } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const form = useForm<InvoiceFormSchema, any, InvoiceFormSchema>({
@@ -64,18 +108,21 @@ export function InvoiceNew() {
       port_of_discharge: "",
       final_destination: "",
       terms_of_payment: "",
+      incoterm: "",
       currency: "USD",
       exchange_rate: 1,
       net_weight: "",
       gross_weight: "",
       notes: "",
       status: "draft",
+      purchase_order_id: null,
       items: [
         {
           sr_no: 1,
           marks_nos: "",
           no_of_pkgs: "",
           dimensions: "",
+          dimensions_unit: "MM",
           part_number: "",
           description: "",
           quantity: 1,
@@ -87,9 +134,11 @@ export function InvoiceNew() {
     },
   });
 
-  const { register, setValue, watch, formState: { errors, isSubmitting } } = form;
+  const { register, setValue, watch, getValues, reset, formState: { errors, isSubmitting } } = form;
   const handleSubmit = form.handleSubmit;
   const currency = watch("currency");
+  const transportMode = watch("transport_mode");
+  const incoterm = watch("incoterm");
 
   // Pre-fill invoice number and settings defaults for new invoice
   useEffect(() => {
@@ -108,39 +157,105 @@ export function InvoiceNew() {
     }
   }, [isEdit, settings, setValue]);
 
-  // Load existing invoice for edit
+  // Load existing invoice for edit (form once; pickers when customers are ready)
   useEffect(() => {
-    if (isEdit && id) {
-      getInvoice(Number(id)).then((inv) => {
-        if (!inv) return;
-        form.reset({
-          ...inv,
-          items: (inv.items ?? []).map((item) => ({
-            sr_no: item.sr_no,
-            marks_nos: item.marks_nos,
-            no_of_pkgs: item.no_of_pkgs,
-            dimensions: item.dimensions,
-            part_number: item.part_number,
-            description: item.description,
-            quantity: item.quantity,
-            unit: item.unit,
-            unit_price: item.unit_price,
-            total_amount: item.total_amount,
-          })),
-        });
+    if (!isEdit || !id || editFormLoadedRef.current) return;
+    (async () => {
+      const inv = await getInvoice(Number(id));
+      if (!inv) return;
+      if (!currentUser) return;
+      if (!canEditInvoiceByStatus(currentUser.role, inv.status)) {
+        toast.error(
+          inv.status === "final"
+            ? "Only administrators can edit finalized invoices"
+            : "You do not have permission to edit this invoice"
+        );
+        navigate(`/invoices/${id}`);
+        return;
+      }
+      setEditingStatus(inv.status);
+      reset({
+        ...inv,
+        purchase_order_id: inv.purchase_order_id ?? null,
+        items: (inv.items ?? []).map((item) => ({
+          sr_no: item.sr_no,
+          marks_nos: item.marks_nos,
+          no_of_pkgs: item.no_of_pkgs,
+          dimensions: item.dimensions,
+          dimensions_unit: item.dimensions_unit ?? "",
+          part_number: item.part_number,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total_amount: item.total_amount,
+        })),
       });
-    }
-  }, [isEdit, id, form]);
+      editFormLoadedRef.current = true;
+      editPickerMetaRef.current = {
+        purchaseOrderId: inv.purchase_order_id ?? null,
+        consigneeName: inv.consignee_name,
+      };
+
+      if (inv.purchase_order_id) {
+        setSelectedPoId(String(inv.purchase_order_id));
+        const po = await getPurchaseOrder(inv.purchase_order_id);
+        if (po?.customer_id) {
+          setSelectedCustomerId(String(po.customer_id));
+          setCustomerPOs(await getPurchaseOrdersByCustomerId(po.customer_id));
+          editPickerSyncedRef.current = true;
+        }
+      }
+    })();
+  }, [isEdit, id, reset, currentUser, navigate]);
+
+  useEffect(() => {
+    if (!isEdit || !id || editPickerSyncedRef.current || !editFormLoadedRef.current) return;
+    if (customers.length === 0) return;
+    const meta = editPickerMetaRef.current;
+    if (!meta) return;
+
+    (async () => {
+      if (meta.purchaseOrderId) {
+        setSelectedPoId(String(meta.purchaseOrderId));
+        const po = await getPurchaseOrder(meta.purchaseOrderId);
+        if (po?.customer_id) {
+          setSelectedCustomerId(String(po.customer_id));
+          setCustomerPOs(await getPurchaseOrdersByCustomerId(po.customer_id));
+        }
+      } else {
+        const match = customers.find((c) => c.name === meta.consigneeName);
+        if (match) {
+          setSelectedCustomerId(String(match.id));
+          setCustomerPOs(await getPurchaseOrdersByCustomerId(match.id));
+        }
+      }
+      editPickerSyncedRef.current = true;
+    })();
+  }, [isEdit, id, customers]);
 
   // Load customers for selector
   useEffect(() => {
     getCustomers().then(setCustomers);
   }, []);
 
-  function applyCustomer(customerId: string) {
+  function clearPoDerivedFields() {
+    setValue("purchase_order_id", null);
+    setValue("buyer_order_no", "");
+    setValue("other_references", "");
+  }
+
+  async function applyCustomer(customerId: string) {
     setSelectedCustomerId(customerId);
+    setSelectedPoId("");
+    clearPoDerivedFields();
+    setCustomerPOs([]);
+
+    if (!customerId) return;
+
     const c = customers.find((cu) => String(cu.id) === customerId);
     if (!c) return;
+
     setValue("consignee_name", c.name);
     setValue("consignee_address", c.address);
     setValue("country_of_destination", c.country_of_destination);
@@ -152,6 +267,69 @@ export function InvoiceNew() {
     setValue("pre_carrier", c.pre_carrier);
     setValue("port_of_loading", c.port_of_loading);
     if (c.currency === "INR") setValue("exchange_rate", 1);
+
+    setLoadingPOs(true);
+    try {
+      const pos = await getPurchaseOrdersByCustomerId(c.id);
+      setCustomerPOs(pos);
+    } catch (e) {
+      toast.error(`Error loading purchase orders: ${e}`);
+    } finally {
+      setLoadingPOs(false);
+    }
+  }
+
+  async function applyPurchaseOrder(poId: string) {
+    if (!poId || poId === PO_SELECT_NONE) {
+      setSelectedPoId("");
+      clearPoDerivedFields();
+      return;
+    }
+
+    try {
+      const po = await getPurchaseOrder(Number(poId));
+      if (!po) {
+        toast.error("Purchase order not found");
+        return;
+      }
+
+      if (po.customer_id != null) {
+        const customerKey = String(po.customer_id);
+        if (selectedCustomerId !== customerKey) {
+          setSelectedCustomerId(customerKey);
+          setCustomerPOs(await getPurchaseOrdersByCustomerId(po.customer_id));
+        }
+      }
+
+      let customer: Customer | null =
+        customers.find((c) => c.id === po.customer_id) ?? null;
+      if (!customer && po.customer_id) {
+        customer = await getCustomer(po.customer_id);
+      }
+
+      const mapped = mapPurchaseOrderToInvoiceFields(po, customer);
+      const current = getValues();
+      reset({
+        ...current,
+        ...mapped,
+        invoice_number: current.invoice_number,
+        invoice_date: current.invoice_date,
+        transport_mode: current.transport_mode,
+        duty_drawback: current.duty_drawback,
+        hs_code: current.hs_code,
+        country_of_origin: current.country_of_origin,
+        buyer_if_other: current.buyer_if_other,
+        vessel: current.vessel,
+        net_weight: current.net_weight,
+        gross_weight: current.gross_weight,
+        status: current.status,
+        items: mapped.items ?? current.items,
+      });
+      setSelectedPoId(poId);
+      toast.success("Loaded invoice fields from purchase order");
+    } catch (e) {
+      toast.error(`Error loading purchase order: ${e}`);
+    }
   }
 
   // Lock exchange rate to 1 for INR
@@ -178,46 +356,72 @@ export function InvoiceNew() {
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={handleSubmit((data) => onSubmit(data))} className="p-6 space-y-5 max-w-6xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">{isEdit ? "Edit Invoice" : "New Invoice"}</h2>
-            {generatedNumber && !isEdit && (
-              <p className="text-sm text-muted-foreground mt-0.5">Number: {generatedNumber}</p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => navigate(-1)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="outline" disabled={isSubmitting}>
-              <Save size={16} className="mr-1" />
-              Save Draft
-            </Button>
-            <Button
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleSubmit((data) => onSubmit(data, true))}
-            >
-              <CheckCircle size={16} className="mr-1" />
-              Finalize
-            </Button>
-          </div>
-        </div>
+      <form
+        onSubmit={handleSubmit((data) => onSubmit(data))}
+        className="min-h-full bg-gradient-to-b from-slate-100 via-white to-indigo-50/40"
+      >
+        <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+          <header className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm shadow-slate-200/70 backdrop-blur sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+                  <FilePlus2 className="h-5 w-5" aria-hidden />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                    {isEdit ? "Edit Invoice" : "New Invoice"}
+                  </h1>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Commercial export invoice and packing list
+                  </p>
+                  {generatedNumber && !isEdit && (
+                    <span className="mt-2 inline-flex items-center rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/15">
+                      {generatedNumber}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => navigate(-1)} className="border-slate-300 text-slate-700">
+                  <ArrowLeft size={16} className="mr-1" />
+                  Cancel
+                </Button>
+                <Button type="submit" variant="outline" disabled={isSubmitting} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                  <Save size={16} className="mr-1" />
+                  {isEdit && editingStatus === "final" ? "Save Changes" : "Save Draft"}
+                </Button>
+                {(!isEdit || editingStatus === "draft") && can("finalize_invoice") && (
+                  <Button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleSubmit((data) => onSubmit(data, true))}
+                    className="bg-indigo-600 text-white hover:bg-indigo-700"
+                  >
+                    <CheckCircle size={16} className="mr-1" />
+                    Finalize
+                  </Button>
+                )}
+              </div>
+            </div>
+          </header>
 
-        {/* Customer selector — new invoice only */}
-        {!isEdit && customers.length > 0 && (
-          <Card className="border-dashed overflow-visible">
-            <CardContent className="py-3 px-4">
-              <div className="flex items-center gap-3">
-                <UserCheck size={16} className="text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  Load Customer
+          {/* Customer + purchase order loaders */}
+          {customers.length > 0 && (
+            <Card className="overflow-visible border-slate-200/80 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base text-slate-900">Customer & Purchase Order</CardTitle>
+                <CardDescription>Select a customer to prefill shipping details and optionally load a purchase order.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <UserCheck size={16} className="shrink-0 text-indigo-600" />
+                <span className="whitespace-nowrap text-sm font-medium text-slate-600">
+                  Customer
                 </span>
                 <Combobox
-                  className="flex-1 max-w-sm"
+                  className="flex-1 min-w-[200px] max-w-sm"
                   value={selectedCustomerId}
-                  onValueChange={applyCustomer}
+                  onValueChange={(v) => { void applyCustomer(v); }}
                   placeholder="Search and select a customer…"
                   searchPlaceholder="Type customer name or country…"
                   options={customers.map((c) => ({
@@ -229,16 +433,60 @@ export function InvoiceNew() {
                   }))}
                 />
               </div>
-            </CardContent>
-          </Card>
-        )}
+              {selectedCustomerId && (
+                <div className="flex flex-wrap items-center gap-3 pl-7">
+                  <FileText size={16} className="shrink-0 text-indigo-600" />
+                  <span className="whitespace-nowrap text-sm font-medium text-slate-600">
+                    Purchase Order
+                  </span>
+                  <Select
+                    value={selectedPoId || PO_SELECT_NONE}
+                    onValueChange={(v) => { if (v) void applyPurchaseOrder(v); }}
+                    disabled={loadingPOs}
+                  >
+                    <SelectTrigger className="flex-1 min-w-[260px] max-w-xl">
+                      <SelectValue>
+                        {(value: string) => {
+                          if (loadingPOs) return "Loading purchase orders…";
+                          if (!value || value === PO_SELECT_NONE) {
+                            return customerPOs.length
+                              ? "None — enter manually"
+                              : "No purchase orders for this customer";
+                          }
+                          const po = customerPOs.find((p) => String(p.id) === value);
+                          if (!po) return "Loading purchase orders…";
+                          return [po.customer_po_no || po.po_number, po.po_date, po.status]
+                            .filter(Boolean)
+                            .join(" · ");
+                        }}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent
+                      alignItemWithTrigger={false}
+                      className="min-w-[var(--anchor-width)] w-auto max-w-[560px]"
+                    >
+                      <SelectItem value={PO_SELECT_NONE}>None — enter manually</SelectItem>
+                      {customerPOs.map((po) => (
+                        <SelectItem key={po.id} value={String(po.id)}>
+                          {[po.customer_po_no || po.po_number, po.po_date, po.status]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Section 1: Invoice Header */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Invoice Details</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <FormSectionCard
+            icon={FileText}
+            title="Invoice Details"
+            description="Reference details, currency, and commercial metadata."
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Invoice Number *" error={errors.invoice_number?.message}>
               <Input {...register("invoice_number")} readOnly className="bg-muted" />
             </Field>
@@ -247,7 +495,7 @@ export function InvoiceNew() {
             </Field>
             <Field label="Transport Mode" error={errors.transport_mode?.message}>
               <Select
-                defaultValue="BY SEA"
+                value={transportMode}
                 onValueChange={(v) => setValue("transport_mode", v as InvoiceFormSchema["transport_mode"])}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -264,8 +512,8 @@ export function InvoiceNew() {
             <Field label="Duty Drawback" error={errors.duty_drawback?.message}>
               <Input {...register("duty_drawback")} placeholder="ALL INDUSTRY RATE" />
             </Field>
-            <Field label="Bank AD Code" error={errors.hs_code?.message}>
-              <Input {...register("hs_code")} placeholder="HS Code (84148090)" />
+            <Field label="HS Code" error={errors.hs_code?.message}>
+              <Input {...register("hs_code")} placeholder="84148090" />
             </Field>
             <Field label="LUT ARN No" error={undefined}>
               <Input placeholder="From Settings" readOnly className="bg-muted text-muted-foreground text-xs" value={settings?.lut_arn_no ?? ""} />
@@ -273,10 +521,9 @@ export function InvoiceNew() {
             <Field label="Other Reference(s)" error={errors.other_references?.message}>
               <Input {...register("other_references")} placeholder="NIL" />
             </Field>
-            <div className="grid grid-cols-2 gap-2">
               <Field label="Currency" error={errors.currency?.message}>
                 <Select
-                  defaultValue="USD"
+                  value={currency}
                   onValueChange={(v) => setValue("currency", v as InvoiceFormSchema["currency"])}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -287,26 +534,16 @@ export function InvoiceNew() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Exchange Rate" error={errors.exchange_rate?.message}>
-                <Input
-                  type="number"
-                  step="0.0001"
-                  {...register("exchange_rate", { valueAsNumber: true })}
-                  readOnly={currency === "INR"}
-                  className={currency === "INR" ? "bg-muted" : ""}
-                />
-              </Field>
             </div>
-          </CardContent>
-        </Card>
+          </FormSectionCard>
 
-        {/* Section 2: Consignee & Buyer */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Consignee &amp; Buyer</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <div className="space-y-3">
+          <FormSectionCard
+            icon={Users}
+            title="Consignee & Buyer"
+            description="Maintain consignee and buyer identity exactly as required in shipping documents."
+          >
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
               <Field label="Consignee Name *" error={errors.consignee_name?.message}>
                 <Input {...register("consignee_name")} placeholder="CTR CO.,LTD." />
               </Field>
@@ -318,20 +555,20 @@ export function InvoiceNew() {
                 />
               </Field>
             </div>
-            <div className="space-y-3">
+              <div className="space-y-3">
               <Field label="Buyer (if other than consignee)" error={errors.buyer_if_other?.message}>
                 <Textarea {...register("buyer_if_other")} rows={4} placeholder="Leave blank if same as consignee" />
               </Field>
             </div>
-          </CardContent>
-        </Card>
+            </div>
+          </FormSectionCard>
 
-        {/* Section 3: Shipping Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Shipping Details</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-3 gap-4">
+          <FormSectionCard
+            icon={Ship}
+            title="Shipping Details"
+            description="Port and movement information used in invoice, packing list, and exports."
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Country of Origin" error={errors.country_of_origin?.message}>
               <Input {...register("country_of_origin")} defaultValue="INDIA" />
             </Field>
@@ -340,6 +577,32 @@ export function InvoiceNew() {
             </Field>
             <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
               <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" />
+            </Field>
+            <Field label="Incoterm (Delivery)" error={errors.incoterm?.message}>
+              <Select
+                value={incoterm}
+                onValueChange={(v) => setValue("incoterm", v ?? "")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Incoterm…">
+                    {(value: string) => {
+                      if (!value) return "Select Incoterm…";
+                      const found = INCOTERM_OPTIONS.find((o) => o.value === value);
+                      return found ? found.label : value;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  alignItemWithTrigger={false}
+                  className="min-w-[var(--anchor-width)] w-auto max-w-[420px]"
+                >
+                  {INCOTERM_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Pre-Carriage by" error={errors.pre_carriage_by?.message}>
               <Input {...register("pre_carriage_by")} placeholder="BY ROAD" />
@@ -362,25 +625,31 @@ export function InvoiceNew() {
             <Field label="Final Destination" error={errors.final_destination?.message}>
               <Input {...register("final_destination")} placeholder="korea" />
             </Field>
-          </CardContent>
-        </Card>
+            </div>
+          </FormSectionCard>
 
-        {/* Section 4: Line Items */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Goods &amp; Packing Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <LineItemsTable />
-          </CardContent>
-        </Card>
+          <FormSectionCard
+            icon={Package}
+            title="Goods"
+            description="Product line items: part number, description, quantity, and rate."
+          >
+            <GoodsItemsTable />
+          </FormSectionCard>
 
-        {/* Section 5: Weights & Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Weight &amp; Notes</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
+          <FormSectionCard
+            icon={Boxes}
+            title="Packing Details"
+            description="Per-line packing: marks &amp; numbers, number of packages, and carton dimensions."
+          >
+            <PackingItemsTable />
+          </FormSectionCard>
+
+          <FormSectionCard
+            icon={Scale}
+            title="Weight & Notes"
+            description="Shipment weight and additional commercial remarks."
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Net Weight" error={undefined}>
               <Input {...register("net_weight")} placeholder="405.20 kgs" />
             </Field>
@@ -392,8 +661,9 @@ export function InvoiceNew() {
                 <Textarea {...register("notes")} rows={3} />
               </Field>
             </div>
-          </CardContent>
-        </Card>
+            </div>
+          </FormSectionCard>
+        </div>
       </form>
     </FormProvider>
   );
@@ -409,10 +679,43 @@ function Field({
   error?: string;
 }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-xs font-medium">{label}</Label>
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium uppercase tracking-wide text-slate-600">{label}</Label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
+  );
+}
+
+function FormSectionCard({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="border-slate-200/80 bg-white shadow-sm">
+      <CardHeader className="border-b border-slate-100 pb-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+            <Icon className="h-4 w-4" />
+          </div>
+          <div>
+            <CardTitle className="text-base text-slate-900">{title}</CardTitle>
+            {description ? (
+              <CardDescription className="mt-1 text-xs text-slate-500">
+                {description}
+              </CardDescription>
+            ) : null}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-5">{children}</CardContent>
+    </Card>
   );
 }

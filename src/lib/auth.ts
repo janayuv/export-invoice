@@ -93,6 +93,8 @@ export const PERMISSIONS = {
   export_invoice: ["admin", "operator", "viewer"],
   create_invoice: ["admin", "operator"],
   edit_invoice: ["admin", "operator"],
+  edit_final_invoice: ["admin"],
+  edit_confirmed_po: ["admin"],
   finalize_invoice: ["admin"],
   delete_invoice: ["admin"],
   access_settings: ["admin"],
@@ -103,4 +105,23 @@ export type Permission = keyof typeof PERMISSIONS;
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {
   return (PERMISSIONS[permission] as readonly string[]).includes(role);
+}
+
+/** Draft invoices: operator+; finalized: admin only. */
+export function canEditInvoiceByStatus(
+  role: UserRole,
+  status: "draft" | "final"
+): boolean {
+  if (status === "draft") return hasPermission(role, "edit_invoice");
+  return hasPermission(role, "edit_final_invoice");
+}
+
+/** Draft POs: operator+; confirmed: admin only; closed: no one. */
+export function canEditPurchaseOrderByStatus(
+  role: UserRole,
+  status: "draft" | "confirmed" | "closed"
+): boolean {
+  if (status === "draft") return hasPermission(role, "edit_invoice");
+  if (status === "confirmed") return hasPermission(role, "edit_confirmed_po");
+  return false;
 }
