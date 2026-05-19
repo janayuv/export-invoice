@@ -333,7 +333,6 @@ export function InvoiceNew() {
         duty_drawback: current.duty_drawback,
         hs_code: current.hs_code,
         country_of_origin: current.country_of_origin,
-        buyer_if_other: current.buyer_if_other,
         vessel: current.vessel,
         net_weight: current.net_weight,
         gross_weight: current.gross_weight,

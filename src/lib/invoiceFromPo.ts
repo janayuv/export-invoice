@@ -37,12 +37,26 @@ export function mapPurchaseOrderToInvoiceFields(
         }))
       : undefined;
 
+  const deliveryAddress = po.delivery_address?.trim() ?? "";
+  const hasDeliveryTo =
+    deliveryAddress.length > 0 &&
+    deliveryAddress !== po.customer_address?.trim();
+
+  const consignee_name = hasDeliveryTo
+    ? (deliveryAddress.split("\n")[0]?.trim() ?? "")
+    : po.customer_name;
+  const consignee_address = hasDeliveryTo ? deliveryAddress : po.customer_address;
+  const buyer_if_other = hasDeliveryTo
+    ? [po.customer_name, po.customer_address].filter(Boolean).join("\n")
+    : "";
+
   const fromPo: Partial<InvoiceFormSchema> = {
     purchase_order_id: po.id,
     show_sa_number: po.show_sa_number,
     buyer_order_no: po.customer_po_no,
-    consignee_name: po.customer_name,
-    consignee_address: po.customer_address,
+    consignee_name,
+    consignee_address,
+    buyer_if_other,
     terms_of_payment: po.payment_terms,
     currency,
     exchange_rate,
