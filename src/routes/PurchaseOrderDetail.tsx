@@ -73,6 +73,7 @@ export function PurchaseOrderDetail() {
   const totalAmount = items.reduce((s, i) => s + i.total_amount, 0);
   const isDraft = po.status === "draft";
   const isConfirmed = po.status === "confirmed";
+  const showSa = po.show_sa_number ?? true;
   const canEdit =
     currentUser != null && canEditPurchaseOrderByStatus(currentUser.role, po.status);
 
@@ -163,6 +164,7 @@ export function PurchaseOrderDetail() {
           <thead>
             <tr className="border-b bg-muted/30 text-[10px] font-sans font-semibold text-muted-foreground uppercase tracking-wide">
               <th className="p-2 text-left w-8">Sr.</th>
+              {showSa && <th className="p-2 text-left w-24">SA Number</th>}
               <th className="p-2 text-left">Part Number</th>
               <th className="p-2 text-left">Description</th>
               <th className="p-2 text-right w-20">Qty</th>
@@ -175,6 +177,7 @@ export function PurchaseOrderDetail() {
             {items.map((item) => (
               <tr key={item.sr_no} className="border-b last:border-0">
                 <td className="p-2 text-center text-muted-foreground">{item.sr_no}</td>
+                {showSa && <td className="p-2">{item.sa_number}</td>}
                 <td className="p-2">{item.part_number}</td>
                 <td className="p-2">{item.description}</td>
                 <td className="p-2 text-right">
@@ -192,7 +195,7 @@ export function PurchaseOrderDetail() {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/20 font-bold">
-              <td colSpan={5} className="p-2 text-right text-xs font-sans font-semibold text-muted-foreground uppercase tracking-wide">
+              <td colSpan={showSa ? 6 : 5} className="p-2 text-right text-xs font-sans font-semibold text-muted-foreground uppercase tracking-wide">
                 Total {po.currency}
               </td>
               <td />

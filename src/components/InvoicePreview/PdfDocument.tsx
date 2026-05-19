@@ -42,10 +42,18 @@ interface Props {
 
 export function InvoicePdfDocument({ invoice, company }: Props) {
   const items = invoice.items ?? [];
+  const packingList = invoice.packing_list ?? [];
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
   const totalAmt = items.reduce((sum, i) => sum + i.total_amount, 0);
   const refs = invoiceReferenceRows(invoice, company);
   const rateLabel = rateColumnLabel(invoice.incoterm, invoice.currency);
+  const showSa = invoice.show_sa_number ?? true;
+  const srW   = showSa ? "5%"  : "6%";
+  const partW = showSa ? "14%" : "16%";
+  const descW = showSa ? "38%" : "42%";
+  const rateW = showSa ? "11%" : "13%";
+  const amtW  = showSa ? "12%" : "13%";
+  const totalSpanW = showSa ? "67%" : "64%";
 
   return (
     <Document>
@@ -139,9 +147,15 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
                   <Text style={[s.bold, { marginTop: 2 }]}>{invoice.country_of_destination}</Text>
                 </View>
               </View>
-              <View style={[s.cell, { minHeight: 40 }]}>
-                <Text style={s.label}>Terms of payment:</Text>
-                <Text style={{ marginTop: 2 }}>{invoice.terms_of_payment}</Text>
+              <View style={{ flexGrow: 1, flexDirection: "column" }}>
+                <View style={[s.cell, s.borderB]}>
+                  <Text style={s.label}>Terms of payment:</Text>
+                  <Text style={{ marginTop: 2 }}>{invoice.terms_of_payment}</Text>
+                </View>
+                <View style={s.cell}>
+                  <Text style={s.label}>Incoterm:</Text>
+                  <Text style={{ marginTop: 2 }}>{invoice.incoterm}</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -150,38 +164,41 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
           <View>
             <Text style={s.sectionBanner}>GOODS</Text>
             <View style={[s.row, s.tableHead, s.borderB]}>
-              <Th w="6%" align="center">Sr.</Th>
-              <Th w="16%">Part Number</Th>
-              <Th w="42%">Description of goods</Th>
+              <Th w={srW} align="center">Sr.</Th>
+              {showSa && <Th w="10%">SA Number</Th>}
+              <Th w={partW}>Part Number</Th>
+              <Th w={descW}>Description of goods</Th>
               <Th w="10%" align="right">Quantity</Th>
-              <Th w="13%" align="right">Rate</Th>
-              <Th w="13%" align="right">Amount</Th>
+              <Th w={rateW} align="right">Rate</Th>
+              <Th w={amtW} align="right">Amount</Th>
             </View>
             <View style={[s.row, s.borderB]}>
-              <Th w="6%"></Th>
-              <Th w="16%"></Th>
-              <Th w="42%"></Th>
+              <Th w={srW}></Th>
+              {showSa && <Th w="10%"></Th>}
+              <Th w={partW}></Th>
+              <Th w={descW}></Th>
               <Th w="10%" align="right" sub>NOS</Th>
-              <Th w="13%" align="right" sub>{rateLabel}</Th>
-              <Th w="13%" align="right" sub last>{rateLabel}</Th>
+              <Th w={rateW} align="right" sub>{rateLabel}</Th>
+              <Th w={amtW} align="right" sub last>{rateLabel}</Th>
             </View>
 
             {items.map((item, idx) => (
               <View key={`g-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc" }]}>
-                <Td w="6%" align="center">{String(item.sr_no)}</Td>
-                <Td w="16%">{item.part_number}</Td>
-                <Td w="42%">{item.description}</Td>
+                <Td w={srW} align="center">{String(item.sr_no)}</Td>
+                {showSa && <Td w="10%">{item.sa_number}</Td>}
+                <Td w={partW}>{item.part_number}</Td>
+                <Td w={descW}>{item.description}</Td>
                 <Td w="10%" align="right">{fmtAmount(item.quantity, 0)}</Td>
-                <Td w="13%" align="right">{fmtAmount(item.unit_price, 3)}</Td>
-                <Td w="13%" align="right" last>{fmtAmount(item.total_amount)}</Td>
+                <Td w={rateW} align="right">{fmtAmount(item.unit_price, 3)}</Td>
+                <Td w={amtW} align="right" last>{fmtAmount(item.total_amount)}</Td>
               </View>
             ))}
 
             <View style={[s.row, s.borderB, { borderTop: "1pt solid #000", backgroundColor: "#f8fafc" }]}>
-              <Td w="64%" align="right" bold last>TOTAL</Td>
+              <Td w={totalSpanW} align="right" bold last>TOTAL</Td>
               <Td w="10%" align="right" bold>{fmtAmount(totalQty, 0)}</Td>
-              <Td w="13%"></Td>
-              <View style={{ width: "13%", padding: 3, alignItems: "flex-end", backgroundColor: "#e0e7ff" }}>
+              <Td w={rateW}></Td>
+              <View style={{ width: amtW, padding: 3, alignItems: "flex-end", backgroundColor: "#e0e7ff" }}>
                 <Text style={[s.bold, { fontSize: 9 }]}>{fmtAmount(totalAmt)}</Text>
               </View>
             </View>
@@ -206,24 +223,20 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               <Th w="12%" last>Unit</Th>
             </View>
 
-            {items.map((item, idx) => (
+            {packingList.map((row, idx) => (
               <View key={`p-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc" }]}>
-                <Td w="6%" align="center">{String(item.sr_no)}</Td>
-                <Td w="34%">{item.marks_nos}</Td>
-                <Td w="14%">{item.no_of_pkgs}</Td>
-                <Td w="34%">{item.dimensions}</Td>
-                <Td w="12%" last>{item.dimensions_unit}</Td>
+                <Td w="6%" align="center">{String(idx + 1)}</Td>
+                <Td w="34%">{row.marks_nos}</Td>
+                <Td w="14%">{row.no_of_pkgs}</Td>
+                <Td w="34%">{row.dimensions}</Td>
+                <Td w="12%" last>{row.dimensions_unit}</Td>
               </View>
             ))}
 
-            {(invoice.net_weight || invoice.gross_weight) ? (
-              <View style={[s.row, { borderBottom: "0.5pt solid #ccc", padding: 3 }]}>
-                <Text style={{ fontSize: 7 }}>
-                  {invoice.net_weight ? `Nt Wt: ${invoice.net_weight}   ` : ""}
-                  {invoice.gross_weight ? `Gr Wt: ${invoice.gross_weight}` : ""}
-                </Text>
-              </View>
-            ) : null}
+            <View style={[{ borderTop: "1pt solid #000", backgroundColor: "#f8fafc", padding: 3 }]}>
+              <Text style={s.bold}>{`Net Weight: ${invoice.net_weight ?? ""} Kgs`}</Text>
+              <Text style={[s.bold, { marginTop: 2 }]}>{`Gross Weight: ${invoice.gross_weight ?? ""} Kgs`}</Text>
+            </View>
           </View>
 
           {/* Declaration + signature */}

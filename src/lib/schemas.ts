@@ -19,6 +19,16 @@ export const companySettingsSchema = z.object({
 
 export type CompanySettingsFormValues = z.infer<typeof companySettingsSchema>;
 
+export const packingListItemSchema = z.object({
+  sr_no: z.number().int().positive(),
+  marks_nos: z.string(),
+  no_of_pkgs: z.string(),
+  dimensions: z.string(),
+  dimensions_unit: z.string(),
+  net_weight: z.string().optional(),
+  gross_weight: z.string().optional(),
+});
+
 export const invoiceItemSchema = z.object({
   sr_no: z.number().int().positive(),
   marks_nos: z.string(),
@@ -26,11 +36,13 @@ export const invoiceItemSchema = z.object({
   dimensions: z.string(),
   dimensions_unit: z.string(),
   part_number: z.string(),
+  sa_number: z.string(),
   description: z.string().min(1, "Description is required"),
   quantity: z.number().positive("Quantity must be positive"),
   unit: z.string().min(1, "Unit is required"),
   unit_price: z.number().nonnegative("Price cannot be negative"),
   total_amount: z.number().nonnegative(),
+  included: z.boolean().optional(),
 });
 
 export const invoiceFormSchema = z.object({
@@ -61,8 +73,10 @@ export const invoiceFormSchema = z.object({
   gross_weight: z.string(),
   notes: z.string(),
   status: z.enum(["draft", "final"]),
+  show_sa_number: z.boolean().default(true),
   purchase_order_id: z.number().int().nullable().optional(),
   items: z.array(invoiceItemSchema).min(1, "At least one item is required"),
+  packing_list: z.array(packingListItemSchema).default([]),
 });
 
 export type InvoiceFormSchema = z.infer<typeof invoiceFormSchema>;
@@ -71,6 +85,7 @@ export type InvoiceFormSchema = z.infer<typeof invoiceFormSchema>;
 export const poItemSchema = z.object({
   sr_no: z.number().int().positive(),
   part_number: z.string(),
+  sa_number: z.string(),
   description: z.string().min(1, "Description is required"),
   quantity: z.number().positive("Quantity must be positive"),
   unit: z.string().min(1, "Unit is required"),
@@ -96,6 +111,7 @@ export const poFormSchema = z.object({
   exchange_rate: z.number().positive(),
   notes: z.string(),
   status: z.enum(["draft", "confirmed", "closed"]),
+  show_sa_number: z.boolean().default(true),
   created_by: z.number().nullable(),
   items: z.array(poItemSchema).min(1, "At least one line item is required"),
 });

@@ -28,6 +28,7 @@ export function mapPurchaseOrderToInvoiceFields(
           dimensions: "",
           dimensions_unit: "MM",
           part_number: line.part_number,
+          sa_number: line.sa_number,
           description: line.description,
           quantity: line.quantity,
           unit: line.unit,
@@ -38,6 +39,7 @@ export function mapPurchaseOrderToInvoiceFields(
 
   const fromPo: Partial<InvoiceFormSchema> = {
     purchase_order_id: po.id,
+    show_sa_number: po.show_sa_number,
     buyer_order_no: po.customer_po_no,
     consignee_name: po.customer_name,
     consignee_address: po.customer_address,

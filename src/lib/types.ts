@@ -51,7 +51,9 @@ export interface Invoice {
   gross_weight: string;
   notes: string;
   status: InvoiceStatus;
+  show_sa_number: boolean;
   purchase_order_id?: number | null;
+  packing_list?: PackingListItem[];
   created_at: string;
   updated_at: string;
   items?: InvoiceItem[];
@@ -66,6 +68,7 @@ export interface InvoiceItem {
   dimensions: string;
   dimensions_unit: string;
   part_number: string;
+  sa_number: string;
   description: string;
   quantity: number;
   unit: string;
@@ -73,9 +76,20 @@ export interface InvoiceItem {
   total_amount: number;
 }
 
+export interface PackingListItem {
+  sr_no: number;
+  marks_nos: string;
+  no_of_pkgs: string;
+  dimensions: string;
+  dimensions_unit: string;
+  net_weight?: string;
+  gross_weight?: string;
+}
+
 export type InvoiceFormValues = Omit<
   Invoice,
   "id" | "created_at" | "updated_at" | "items"
 > & {
   items: Omit<InvoiceItem, "id" | "invoice_id">[];
+  packing_list?: PackingListItem[];
 };

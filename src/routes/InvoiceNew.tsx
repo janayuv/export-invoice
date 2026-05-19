@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GoodsItemsTable, PackingItemsTable } from "@/components/LineItemsTable";
+import { GoodsItemsTable, PackingListTable } from "@/components/LineItemsTable";
 import { invoiceFormSchema, type InvoiceFormSchema } from "@/lib/schemas";
 import {
   generateInvoiceNumber,
@@ -115,6 +115,7 @@ export function InvoiceNew() {
       gross_weight: "",
       notes: "",
       status: "draft",
+      show_sa_number: true,
       purchase_order_id: null,
       items: [
         {
@@ -124,11 +125,23 @@ export function InvoiceNew() {
           dimensions: "",
           dimensions_unit: "MM",
           part_number: "",
+          sa_number: "",
           description: "",
           quantity: 1,
           unit: "NOS",
           unit_price: 0,
           total_amount: 0,
+        },
+      ],
+      packing_list: [
+        {
+          sr_no: 1,
+          marks_nos: "INZI/ICK/1",
+          no_of_pkgs: "1",
+          dimensions: "",
+          dimensions_unit: "CM",
+          net_weight: "",
+          gross_weight: "",
         },
       ],
     },
@@ -139,6 +152,7 @@ export function InvoiceNew() {
   const currency = watch("currency");
   const transportMode = watch("transport_mode");
   const incoterm = watch("incoterm");
+  const showSaNumber = watch("show_sa_number") ?? true;
 
   // Pre-fill invoice number and settings defaults for new invoice
   useEffect(() => {
@@ -184,6 +198,7 @@ export function InvoiceNew() {
           dimensions: item.dimensions,
           dimensions_unit: item.dimensions_unit ?? "",
           part_number: item.part_number,
+          sa_number: item.sa_number,
           description: item.description,
           quantity: item.quantity,
           unit: item.unit,
@@ -338,8 +353,21 @@ export function InvoiceNew() {
   }, [currency, setValue]);
 
   async function onSubmit(data: InvoiceFormSchema, finalize = false) {
+    const includedItems = data.items
+      .filter((item) => item.included !== false)
+      .map((item, i) => ({ ...item, sr_no: i + 1 }));
+
+    if (includedItems.length === 0) {
+      toast.error("At least one item must be included");
+      return;
+    }
+
     try {
-      const finalData = { ...data, status: finalize ? "final" as const : data.status };
+      const finalData = {
+        ...data,
+        status: finalize ? "final" as const : data.status,
+        items: includedItems,
+      };
       if (isEdit && id) {
         await updateInvoice(Number(id), finalData);
         toast.success("Invoice updated");
@@ -633,7 +661,17 @@ export function InvoiceNew() {
             title="Goods"
             description="Product line items: part number, description, quantity, and rate."
           >
-            <GoodsItemsTable />
+            <div className="mb-3">
+              <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  {...register("show_sa_number")}
+                  className="h-3.5 w-3.5 accent-indigo-600"
+                />
+                Show SA Number column
+              </label>
+            </div>
+            <GoodsItemsTable showSaNumber={showSaNumber} />
           </FormSectionCard>
 
           <FormSectionCard
@@ -641,7 +679,7 @@ export function InvoiceNew() {
             title="Packing Details"
             description="Per-line packing: marks &amp; numbers, number of packages, and carton dimensions."
           >
-            <PackingItemsTable />
+            <PackingListTable />
           </FormSectionCard>
 
           <FormSectionCard

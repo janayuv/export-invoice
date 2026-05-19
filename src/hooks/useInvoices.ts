@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getDb } from "@/lib/db";
-import type { Invoice, InvoiceItem, InvoiceFormValues } from "@/lib/types";
+import type { Invoice, InvoiceItem, InvoiceFormValues, PackingListItem } from "@/lib/types";
 
 function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
   const year = date.getFullYear();
@@ -79,6 +79,9 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
   );
   if (rows.length === 0) return null;
   const invoice = rows[0];
+  invoice.packing_list = JSON.parse(
+    (invoice.packing_list as unknown as string) || "[]"
+  ) as PackingListItem[];
   const items = await db.select<InvoiceItem[]>(
     "SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sr_no",
     [id]
@@ -101,10 +104,10 @@ export async function createInvoice(
       pre_carriage_by, place_of_receipt, pre_carrier, vessel,
       port_of_loading, port_of_discharge, final_destination, terms_of_payment,
       currency, exchange_rate, net_weight, gross_weight, notes, status,
-      purchase_order_id, created_by, incoterm
+      purchase_order_id, created_by, incoterm, packing_list
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-      $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+      $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
     )`,
     [
       invoiceNumber, data.invoice_date, data.transport_mode,
@@ -116,7 +119,7 @@ export async function createInvoice(
       data.final_destination, data.terms_of_payment, data.currency,
       data.exchange_rate, data.net_weight, data.gross_weight,
       data.notes, data.status, data.purchase_order_id ?? null, createdBy ?? null,
-      data.incoterm,
+      data.incoterm, JSON.stringify(data.packing_list ?? []),
     ]
   );
 
@@ -125,12 +128,12 @@ export async function createInvoice(
     await db.execute(
       `INSERT INTO invoice_items (
         invoice_id, sr_no, marks_nos, no_of_pkgs, dimensions, dimensions_unit,
-        part_number, description, quantity, unit, unit_price, total_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        part_number, sa_number, description, quantity, unit, unit_price, total_amount
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         invoiceId, item.sr_no, item.marks_nos, item.no_of_pkgs,
-        item.dimensions, item.dimensions_unit, item.part_number, item.description,
-        item.quantity, item.unit, item.unit_price, item.total_amount,
+        item.dimensions, item.dimensions_unit, item.part_number, item.sa_number,
+        item.description, item.quantity, item.unit, item.unit_price, item.total_amount,
       ]
     );
   }
@@ -152,8 +155,9 @@ export async function updateInvoice(
       pre_carrier=$15, vessel=$16, port_of_loading=$17, port_of_discharge=$18,
       final_destination=$19, terms_of_payment=$20, currency=$21,
       exchange_rate=$22, net_weight=$23, gross_weight=$24, notes=$25,
-      status=$26, purchase_order_id=$27, incoterm=$28, updated_at=datetime('now')
-     WHERE id=$29`,
+      status=$26, purchase_order_id=$27, incoterm=$28, packing_list=$29,
+      updated_at=datetime('now')
+     WHERE id=$30`,
     [
       data.invoice_number, data.invoice_date, data.transport_mode,
       data.buyer_order_no, data.duty_drawback, data.hs_code,
@@ -163,7 +167,8 @@ export async function updateInvoice(
       data.vessel, data.port_of_loading, data.port_of_discharge,
       data.final_destination, data.terms_of_payment, data.currency,
       data.exchange_rate, data.net_weight, data.gross_weight,
-      data.notes, data.status, data.purchase_order_id ?? null, data.incoterm, id,
+      data.notes, data.status, data.purchase_order_id ?? null, data.incoterm,
+      JSON.stringify(data.packing_list ?? []), id,
     ]
   );
 

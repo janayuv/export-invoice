@@ -34,6 +34,7 @@ const PO_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED"] as const;
 const DEFAULT_ITEM = (): POItem => ({
   sr_no: 1,
   part_number: "",
+  sa_number: "",
   description: "",
   quantity: 1,
   unit: "NOS",
@@ -55,6 +56,7 @@ const DEFAULT_FORM: POFormValues = {
   exchange_rate: 1,
   notes: "",
   status: "draft",
+  show_sa_number: true,
   created_by: null,
   items: [DEFAULT_ITEM()],
 };
@@ -147,6 +149,7 @@ export function PurchaseOrderNew() {
           exchange_rate: po.exchange_rate,
           notes: po.notes,
           status: po.status,
+          show_sa_number: po.show_sa_number,
           created_by: po.created_by,
           items: po.items ?? [DEFAULT_ITEM()],
         });
@@ -439,11 +442,23 @@ export function PurchaseOrderNew() {
           description={`Part number, description, quantity, and unit as stated on the customer PO (${form.currency}).`}
         >
           <div className="space-y-3">
+          <div className="mb-1">
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.show_sa_number}
+                onChange={(e) => set("show_sa_number", e.target.checked)}
+                className="h-3.5 w-3.5 accent-indigo-600"
+              />
+              Show SA Number column
+            </label>
+          </div>
           {fieldErrors.items && (
             <p className="text-xs text-destructive">{fieldErrors.items}</p>
           )}
-          <div className="grid grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem] gap-2 rounded-md bg-slate-50 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} gap-2 rounded-md bg-slate-50 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600`}>
             <span>Sr.</span>
+            {form.show_sa_number && <span>SA Number</span>}
             <span>Part Number</span>
             <span>Description</span>
             <span>Qty</span>
@@ -456,9 +471,17 @@ export function PurchaseOrderNew() {
           {form.items.map((item, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem] items-center gap-2 rounded-md border border-slate-200/80 bg-white px-2 py-2"
+              className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} items-center gap-2 rounded-md border border-slate-200/80 bg-white px-2 py-2`}
             >
               <span className="text-center text-xs text-slate-500">{item.sr_no}</span>
+              {form.show_sa_number && (
+                <Input
+                  placeholder="SA No."
+                  value={item.sa_number}
+                  onChange={(e) => updateItem(idx, "sa_number", e.target.value)}
+                  className="h-8 text-xs"
+                />
+              )}
               <Input
                 placeholder="Part No."
                 value={item.part_number}
@@ -475,8 +498,10 @@ export function PurchaseOrderNew() {
                 type="number"
                 min="0"
                 step="any"
-                value={item.quantity}
-                onChange={(e) => updateItem(idx, "quantity", parseFloat(e.target.value) || 0)}
+                value={String(item.quantity ?? "")}
+                onChange={(e) =>
+                  updateItem(idx, "quantity", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
+                }
                 className="h-8 text-xs"
               />
               <Input

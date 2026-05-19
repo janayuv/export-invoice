@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { PlusCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ function newRowDefaults(srNo: number) {
     dimensions: "",
     dimensions_unit: "MM",
     part_number: "",
+    sa_number: "",
     description: "",
     quantity: 1,
     unit: "NOS",
@@ -30,7 +32,7 @@ function newRowDefaults(srNo: number) {
   };
 }
 
-export function GoodsItemsTable() {
+export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolean }) {
   const { control, register, setValue, formState: { errors } } = useFormContext<InvoiceFormSchema>();
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const incoterm = useWatch({ control, name: "incoterm" });
@@ -46,7 +48,9 @@ export function GoodsItemsTable() {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-50/90">
+              <Th className="w-8 text-center">✓</Th>
               <Th>Sr.</Th>
+              {showSaNumber && <Th>SA Number</Th>}
               <Th>Part Number</Th>
               <Th>Description *</Th>
               <Th>Qty *</Th>
@@ -66,11 +70,12 @@ export function GoodsItemsTable() {
                 register={register}
                 control={control}
                 setValue={setValue}
+                showSaNumber={showSaNumber}
               />
             ))}
           </tbody>
           <tfoot>
-            <GoodsTotalsFooter control={control} />
+            <GoodsTotalsFooter control={control} showSaNumber={showSaNumber} />
           </tfoot>
         </table>
       </div>
@@ -87,42 +92,57 @@ export function GoodsItemsTable() {
   );
 }
 
-export function PackingItemsTable() {
+export function PackingListTable() {
   const { control, register, setValue } = useFormContext<InvoiceFormSchema>();
-  const { fields } = useFieldArray({ control, name: "items" });
+  const { fields, append, remove } = useFieldArray({ control, name: "packing_list" });
 
-  if (fields.length === 0) {
-    return (
-      <p className="text-xs text-slate-500">
-        Add a line item in Goods to enter packing details.
-      </p>
-    );
+  function addRow() {
+    append({
+      sr_no: fields.length + 1,
+      marks_nos: "",
+      no_of_pkgs: "",
+      dimensions: "",
+      dimensions_unit: "CM",
+      net_weight: "",
+      gross_weight: "",
+    });
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="bg-slate-50/90">
-            <Th>Sr.</Th>
-            <Th>Marks &amp; Nos</Th>
-            <Th>No of Pkgs</Th>
-            <Th>Dimensions</Th>
-            <Th>Unit</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((field, index) => (
-            <PackingRow
-              key={field.id}
-              index={index}
-              register={register}
-              control={control}
-              setValue={setValue}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-50/90">
+              <Th>Sr.</Th>
+              <Th>Marks &amp; Nos</Th>
+              <Th>No of Pkgs</Th>
+              <Th>Dimensions</Th>
+              <Th>Unit</Th>
+              <Th>Net Wt</Th>
+              <Th>Gross Wt</Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((field, index) => (
+              <PackingListRow
+                key={field.id}
+                index={index}
+                onRemove={() => remove(index)}
+                canRemove={fields.length > 1}
+                register={register}
+                control={control}
+                setValue={setValue}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={addRow} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+        <PlusCircle size={14} className="mr-1" />
+        Add Row
+      </Button>
     </div>
   );
 }
@@ -134,6 +154,7 @@ function GoodsRow({
   register,
   control,
   setValue,
+  showSaNumber,
 }: {
   index: number;
   onRemove: () => void;
@@ -141,18 +162,33 @@ function GoodsRow({
   register: ReturnType<typeof useFormContext<InvoiceFormSchema>>["register"];
   control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
   setValue: ReturnType<typeof useFormContext<InvoiceFormSchema>>["setValue"];
+  showSaNumber: boolean;
 }) {
   const qty = useWatch({ control, name: `items.${index}.quantity` });
   const price = useWatch({ control, name: `items.${index}.unit_price` });
+  const currentTotal = useWatch({ control, name: `items.${index}.total_amount` });
+  const included = useWatch({ control, name: `items.${index}.included` });
 
   const total = (Number(qty) || 0) * (Number(price) || 0);
 
-  if (total !== useWatch({ control, name: `items.${index}.total_amount` })) {
-    setValue(`items.${index}.total_amount`, total, { shouldValidate: false });
-  }
+  useEffect(() => {
+    if (total !== currentTotal) {
+      setValue(`items.${index}.total_amount`, total, { shouldValidate: false });
+    }
+  }, [total, currentTotal, index, setValue]);
 
   return (
-    <tr className="border-b border-slate-100 last:border-b-0">
+    <tr className={`border-b border-slate-100 last:border-b-0 transition-opacity ${included === false ? "opacity-40" : ""}`}>
+      <Td className="text-center">
+        <input
+          type="checkbox"
+          checked={included !== false}
+          onChange={(e) =>
+            setValue(`items.${index}.included`, e.target.checked, { shouldValidate: false })
+          }
+          className="h-3.5 w-3.5 accent-indigo-600"
+        />
+      </Td>
       <Td>
         <input
           type="hidden"
@@ -161,6 +197,11 @@ function GoodsRow({
         />
         <span className="px-1 text-slate-500">{index + 1}</span>
       </Td>
+      {showSaNumber && (
+        <Td>
+          <Input className="w-24 h-8 text-xs" {...register(`items.${index}.sa_number`)} />
+        </Td>
+      )}
       <Td>
         <Input className="min-w-[100px] h-8 text-xs" {...register(`items.${index}.part_number`)} />
       </Td>
@@ -172,7 +213,14 @@ function GoodsRow({
           className="w-20 h-8 text-xs text-right"
           type="number"
           step="0.001"
-          {...register(`items.${index}.quantity`, { valueAsNumber: true })}
+          value={String(qty ?? "")}
+          onChange={(e) =>
+            setValue(
+              `items.${index}.quantity`,
+              e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
+              { shouldValidate: false }
+            )
+          }
         />
       </Td>
       <Td>
@@ -205,18 +253,22 @@ function GoodsRow({
   );
 }
 
-function PackingRow({
+function PackingListRow({
   index,
+  onRemove,
+  canRemove,
   register,
   control,
   setValue,
 }: {
   index: number;
+  onRemove: () => void;
+  canRemove: boolean;
   register: ReturnType<typeof useFormContext<InvoiceFormSchema>>["register"];
   control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
   setValue: ReturnType<typeof useFormContext<InvoiceFormSchema>>["setValue"];
 }) {
-  const dimensionsUnit = useWatch({ control, name: `items.${index}.dimensions_unit` });
+  const dimensionsUnit = useWatch({ control, name: `packing_list.${index}.dimensions_unit` });
 
   return (
     <tr className="border-b border-slate-100 last:border-b-0">
@@ -224,20 +276,20 @@ function PackingRow({
         <span className="px-1 text-slate-500">{index + 1}</span>
       </Td>
       <Td>
-        <Input className="min-w-[140px] h-8 text-xs" {...register(`items.${index}.marks_nos`)} />
+        <Input className="min-w-[140px] h-8 text-xs" {...register(`packing_list.${index}.marks_nos`)} />
       </Td>
       <Td>
-        <Input className="min-w-[100px] h-8 text-xs" {...register(`items.${index}.no_of_pkgs`)} />
+        <Input className="w-20 h-8 text-xs" {...register(`packing_list.${index}.no_of_pkgs`)} />
       </Td>
       <Td>
-        <Input className="min-w-[140px] h-8 text-xs" {...register(`items.${index}.dimensions`)} placeholder="60×40×30" />
+        <Input className="min-w-[130px] h-8 text-xs" {...register(`packing_list.${index}.dimensions`)} placeholder="60×40×30" />
       </Td>
       <Td>
         <Select
           value={dimensionsUnit || ""}
-          onValueChange={(v) => setValue(`items.${index}.dimensions_unit`, v ?? "")}
+          onValueChange={(v) => setValue(`packing_list.${index}.dimensions_unit`, v ?? "")}
         >
-          <SelectTrigger className="h-8 w-24 text-xs">
+          <SelectTrigger className="h-8 w-20 text-xs">
             <SelectValue placeholder="Unit" />
           </SelectTrigger>
           <SelectContent>
@@ -247,19 +299,38 @@ function PackingRow({
           </SelectContent>
         </Select>
       </Td>
+      <Td>
+        <Input className="w-24 h-8 text-xs" {...register(`packing_list.${index}.net_weight`)} placeholder="12.5 KGS" />
+      </Td>
+      <Td>
+        <Input className="w-24 h-8 text-xs" {...register(`packing_list.${index}.gross_weight`)} placeholder="14.0 KGS" />
+      </Td>
+      <Td>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 hover:bg-rose-50"
+          onClick={onRemove}
+          disabled={!canRemove}
+        >
+          <Trash2 size={13} className="text-destructive" />
+        </Button>
+      </Td>
     </tr>
   );
 }
 
-function GoodsTotalsFooter({ control }: { control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"] }) {
+function GoodsTotalsFooter({ control, showSaNumber }: { control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"]; showSaNumber: boolean }) {
   const items = useWatch({ control, name: "items" });
 
-  const totalQty = items?.reduce((s, i) => s + (Number(i.quantity) || 0), 0) ?? 0;
-  const totalAmt = items?.reduce((s, i) => s + (Number(i.total_amount) || 0), 0) ?? 0;
+  const includedItems = items?.filter((i) => i.included !== false) ?? [];
+  const totalQty = includedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+  const totalAmt = includedItems.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
 
   return (
     <tr className="bg-slate-50 font-semibold text-sm text-slate-700">
-      <Td colSpan={3} className="text-right pr-2">TOTAL</Td>
+      <Td colSpan={showSaNumber ? 5 : 4} className="text-right pr-2">TOTAL</Td>
       <Td className="text-right pr-1">
         {totalQty.toLocaleString("en-US", { maximumFractionDigits: 3 })}
       </Td>

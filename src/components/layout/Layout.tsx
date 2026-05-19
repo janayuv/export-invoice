@@ -80,7 +80,7 @@ export function Layout() {
 
         <nav className="relative flex-1 py-4 overflow-y-auto overflow-x-hidden">
           <div className="px-3 space-y-5">
-            {sections.map((section, idx) => {
+            {sections.map((section) => {
               const visible = section.items.filter((i) => i.show);
               if (visible.length === 0) return null;
               return (

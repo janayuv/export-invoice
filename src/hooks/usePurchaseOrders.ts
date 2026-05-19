@@ -6,6 +6,7 @@ export interface POItem {
   po_id?: number;
   sr_no: number;
   part_number: string;
+  sa_number: string;
   description: string;
   quantity: number;
   unit: string;
@@ -38,6 +39,7 @@ export interface PurchaseOrder {
   exchange_rate: number;
   notes: string;
   status: "draft" | "confirmed" | "closed";
+  show_sa_number: boolean;
   created_by: number | null;
   created_at: string;
   items?: POItem[];
@@ -65,6 +67,7 @@ export function normalizePOFormValues(data: POFormValues): POFormValues {
         ...item,
         sr_no: index + 1,
         part_number: item.part_number.trim(),
+        sa_number: item.sa_number.trim(),
         description: item.description.trim(),
         unit: item.unit.trim(),
         quantity,
@@ -180,9 +183,9 @@ export async function createPurchaseOrder(
   for (const item of payload.items) {
     await db.execute(
       `INSERT INTO purchase_order_items (
-        po_id, sr_no, part_number, description, quantity, unit, unit_price, total_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [poId, item.sr_no, item.part_number, item.description,
+        po_id, sr_no, part_number, sa_number, description, quantity, unit, unit_price, total_amount
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [poId, item.sr_no, item.part_number, item.sa_number, item.description,
        item.quantity, item.unit, item.unit_price, item.total_amount]
     );
   }
@@ -213,9 +216,9 @@ export async function updatePurchaseOrder(
   for (const item of payload.items) {
     await db.execute(
       `INSERT INTO purchase_order_items (
-        po_id, sr_no, part_number, description, quantity, unit, unit_price, total_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [id, item.sr_no, item.part_number, item.description,
+        po_id, sr_no, part_number, sa_number, description, quantity, unit, unit_price, total_amount
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [id, item.sr_no, item.part_number, item.sa_number, item.description,
        item.quantity, item.unit, item.unit_price, item.total_amount]
     );
   }

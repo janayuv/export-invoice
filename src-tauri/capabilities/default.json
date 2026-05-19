@@ -13,6 +13,7 @@
     "fs:write-all",
     "fs:read-all",
     "dialog:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "dialog:allow-confirm"
   ]
 }

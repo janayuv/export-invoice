@@ -281,5 +281,34 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "add_sa_number_to_item_tables",
+            // Shipping advice / SA reference number per line item, on both PO and invoice items.
+            sql: r#"
+                ALTER TABLE purchase_order_items ADD COLUMN sa_number TEXT NOT NULL DEFAULT '';
+                ALTER TABLE invoice_items ADD COLUMN sa_number TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "add_show_sa_number_to_orders_and_invoices",
+            // Per-document flag controlling SA Number column visibility in outputs.
+            sql: r#"
+                ALTER TABLE purchase_orders ADD COLUMN show_sa_number BOOLEAN NOT NULL DEFAULT TRUE;
+                ALTER TABLE invoices ADD COLUMN show_sa_number BOOLEAN NOT NULL DEFAULT TRUE;
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 17,
+            description: "add_packing_list_to_invoices",
+            // Stores per-invoice packing list rows as a JSON array; '[]' for invoices without packing data.
+            sql: r#"
+                ALTER TABLE invoices ADD COLUMN packing_list TEXT NOT NULL DEFAULT '[]';
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }

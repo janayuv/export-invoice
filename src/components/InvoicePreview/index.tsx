@@ -14,10 +14,12 @@ interface Props {
 
 export function InvoicePreview({ invoice, company }: Props) {
   const items = invoice.items ?? [];
+  const packingList = invoice.packing_list ?? [];
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
   const totalAmt = items.reduce((sum, i) => sum + i.total_amount, 0);
   const refs = invoiceReferenceRows(invoice, company);
   const rateLabel = rateColumnLabel(invoice.incoterm, invoice.currency);
+  const showSa = invoice.show_sa_number ?? true;
 
   return (
     <div className="font-sans text-[11px] text-black bg-white">
@@ -101,9 +103,13 @@ export function InvoicePreview({ invoice, company }: Props) {
               <div className="font-semibold mt-0.5">{invoice.country_of_destination}</div>
             </div>
           </div>
-          <div className="p-2 flex-1">
+          <div className="p-2 border-b border-black">
             <div className="text-[9px] text-gray-600">Terms of payment:</div>
             <div className="mt-0.5">{invoice.terms_of_payment}</div>
+          </div>
+          <div className="p-2 flex-1">
+            <div className="text-[9px] text-gray-600">Incoterm:</div>
+            <div className="mt-0.5">{invoice.incoterm}</div>
           </div>
         </div>
       </div>
@@ -115,15 +121,17 @@ export function InvoicePreview({ invoice, company }: Props) {
       <table className="w-full border-collapse text-[10px]">
         <thead>
           <tr className="border-b border-black">
-            <Th className="w-[6%] text-center">Sr.</Th>
-            <Th className="w-[16%]">Part Number</Th>
-            <Th className="w-[42%]">Description of goods</Th>
+            <Th className={`${showSa ? "w-[5%]" : "w-[6%]"} text-center`}>Sr.</Th>
+            {showSa && <Th className="w-[10%]">SA Number</Th>}
+            <Th className={showSa ? "w-[14%]" : "w-[16%]"}>Part Number</Th>
+            <Th className={showSa ? "w-[38%]" : "w-[42%]"}>Description of goods</Th>
             <Th className="w-[10%] text-right">Quantity</Th>
-            <Th className="w-[13%] text-right">Rate</Th>
-            <Th className="w-[13%] text-right">Amount</Th>
+            <Th className={`${showSa ? "w-[11%]" : "w-[13%]"} text-right`}>Rate</Th>
+            <Th className={`${showSa ? "w-[12%]" : "w-[13%]"} text-right`}>Amount</Th>
           </tr>
           <tr className="border-b border-gray-300 text-gray-500">
             <Th></Th>
+            {showSa && <Th></Th>}
             <Th></Th>
             <Th></Th>
             <Th className="text-right">NOS</Th>
@@ -135,6 +143,7 @@ export function InvoicePreview({ invoice, company }: Props) {
           {items.map((item) => (
             <tr key={item.id ?? item.sr_no} className="border-b border-gray-200">
               <Td className="text-center align-top">{item.sr_no}</Td>
+              {showSa && <Td className="align-top">{item.sa_number}</Td>}
               <Td className="align-top">{item.part_number}</Td>
               <Td className="align-top">{item.description}</Td>
               <Td className="text-right align-top">{fmtAmount(item.quantity, 0)}</Td>
@@ -143,7 +152,7 @@ export function InvoicePreview({ invoice, company }: Props) {
             </tr>
           ))}
           <tr className="border-t border-black font-bold bg-slate-50">
-            <Td colSpan={3} className="text-right pr-2">TOTAL</Td>
+            <Td colSpan={showSa ? 4 : 3} className="text-right pr-2">TOTAL</Td>
             <Td className="text-right">{fmtAmount(totalQty, 0)}</Td>
             <Td></Td>
             <Td className="text-right text-[12px] bg-indigo-100 border-r-0">{fmtAmount(totalAmt)}</Td>
@@ -171,23 +180,25 @@ export function InvoicePreview({ invoice, company }: Props) {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr key={`pk-${item.id ?? item.sr_no}`} className="border-b border-gray-200">
-              <Td className="text-center align-top">{item.sr_no}</Td>
-              <Td className="align-top">{item.marks_nos}</Td>
-              <Td className="align-top">{item.no_of_pkgs}</Td>
-              <Td className="align-top">{item.dimensions}</Td>
-              <Td className="align-top">{item.dimensions_unit}</Td>
+          {packingList.map((row, idx) => (
+            <tr key={idx} className="border-b border-gray-200">
+              <Td className="text-center align-top">{idx + 1}</Td>
+              <Td className="align-top">{row.marks_nos}</Td>
+              <Td className="align-top">{row.no_of_pkgs}</Td>
+              <Td className="align-top">{row.dimensions}</Td>
+              <Td className="align-top">{row.dimensions_unit}</Td>
             </tr>
           ))}
-          {(invoice.net_weight || invoice.gross_weight) && (
-            <tr className="border-b border-gray-200">
-              <Td colSpan={5} className="text-[9px]">
-                {invoice.net_weight && <span className="mr-4">Nt Wt: {invoice.net_weight}</span>}
-                {invoice.gross_weight && <span>Gr Wt: {invoice.gross_weight}</span>}
-              </Td>
-            </tr>
-          )}
+          <tr className="border-t border-black bg-slate-50 font-semibold">
+            <Td colSpan={5} className="px-2">
+              Net Weight: {invoice.net_weight} Kgs
+            </Td>
+          </tr>
+          <tr className="bg-slate-50 font-semibold">
+            <Td colSpan={5} className="px-2">
+              Gross Weight: {invoice.gross_weight} Kgs
+            </Td>
+          </tr>
         </tbody>
       </table>
 
