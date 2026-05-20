@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Export Invoice ${{ github.ref_name }}'
+          releaseBody: |
+            ## What's new in ${{ github.ref_name }}
+
+            ### Entry Module
+            - New **Entries** section for linking export shipments to invoices and purchase orders
+            - Auto-fills PO number, PO date, goods, and invoice total from the selected invoice
+            - Manual fields: exchange rate, local invoice no/date, shipping bill no/date, BL/AWB no/date
+            - Invoice picker excludes invoices already used in another entry
+
+            ### Entry Report
+            - New **Entry Report** under Reports — flattened view with one row per invoice line item
+            - Columns: Customer, Invoice No, Invoice Date, PO No, PO Date, Part No, Description, Qty, Rate, Invoice Total, Ex. Rate, Local Invoice No/Date, Shipping Bill No/Date, BL/AWB No/Date
+            - Global search, sortable columns, Export to Excel (.xlsx)
+            - Edit and Delete actions on each row resolve to the correct parent Entry record
+
+            ---
+            Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
+          releaseDraft: false
+          prerelease: false

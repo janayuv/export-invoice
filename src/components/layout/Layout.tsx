@@ -10,6 +10,8 @@ import {
   LogOut,
   ChevronRight,
   Package,
+  ClipboardList,
+  BarChart3,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,7 @@ export function Layout() {
       items: [
         { to: "/invoices", label: "Invoices", icon: FileText, show: true },
         { to: "/invoices/new", label: "Create Invoice", icon: PlusCircle, show: can("create_invoice") },
+        { to: "/entries", label: "Entries", icon: ClipboardList, show: true },
         { to: "/customers", label: "Customers", icon: Building2, show: can("create_invoice") },
       ],
     },
@@ -48,6 +51,12 @@ export function Layout() {
       label: "Procurement",
       items: [
         { to: "/purchase-orders", label: "Purchase Orders", icon: ShoppingCart, show: true },
+      ],
+    },
+    {
+      label: "Reports",
+      items: [
+        { to: "/reports/entries", label: "Entry Report", icon: BarChart3, show: true },
       ],
     },
     {
@@ -93,7 +102,7 @@ export function Layout() {
                       <NavLink
                         key={to}
                         to={to}
-                        end={to !== "/invoices" && to !== "/purchase-orders" && to !== "/dashboard"}
+                        end={to !== "/invoices" && to !== "/purchase-orders" && to !== "/entries" && to !== "/dashboard"}
                         className={({ isActive }) =>
                           cn(
                             "group flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden",

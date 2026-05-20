@@ -12,6 +12,9 @@ import { CustomerManagement } from "@/routes/CustomerManagement";
 import { PurchaseOrderList } from "@/routes/PurchaseOrderList";
 import { PurchaseOrderNew } from "@/routes/PurchaseOrderNew";
 import { PurchaseOrderDetail } from "@/routes/PurchaseOrderDetail";
+import { EntryList } from "@/routes/EntryList";
+import { EntryNew } from "@/routes/EntryNew";
+import { ReportEntries } from "@/routes/ReportEntries";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/lib/auth";
 import type { ReactNode } from "react";
@@ -93,6 +96,28 @@ export default function App() {
                   </PermissionGuard>
                 }
               />
+
+              {/* Entries */}
+              <Route path="entries" element={<EntryList />} />
+              <Route
+                path="entries/new"
+                element={
+                  <PermissionGuard permission="create_invoice">
+                    <EntryNew />
+                  </PermissionGuard>
+                }
+              />
+              <Route
+                path="entries/:id/edit"
+                element={
+                  <PermissionGuard permission="edit_invoice">
+                    <EntryNew />
+                  </PermissionGuard>
+                }
+              />
+
+              {/* Reports */}
+              <Route path="reports/entries" element={<ReportEntries />} />
 
               {/* Masters */}
               <Route path="customers" element={<CustomerManagement />} />

@@ -95,3 +95,87 @@ export type InvoiceFormValues = Omit<
   items: Omit<InvoiceItem, "id" | "invoice_id">[];
   packing_list?: PackingListItem[];
 };
+
+// Line-item snapshot copied from the selected invoice when an entry is created.
+export interface EntryItem {
+  part_number: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_amount: number;
+}
+
+// Consolidated export entry (migrations 20–21). Optional links to a customer,
+// invoice and PO, with denormalized snapshots of their key fields plus the
+// manual export/shipping fields not captured by any existing module.
+export interface Entry {
+  id: number;
+  customer_id: number | null;
+  invoice_id: number | null;
+  purchase_order_id: number | null;
+  customer_name: string;
+  customer_address: string;
+  invoice_number: string;
+  invoice_date: string;
+  po_number: string;
+  po_date: string;
+  customer_po_no: string;
+  currency: Currency;
+  exchange_rate: number;
+  invoice_total: number;
+  local_invoice_no: string;
+  local_invoice_date: string;
+  shipping_bill_no: string;
+  shipping_bill_date: string;
+  bl_awb_no: string;
+  bl_awb_date: string;
+  vessel_flight_no: string;
+  container_no: string;
+  transport_mode: TransportMode;
+  port_of_loading: string;
+  port_of_discharge: string;
+  final_destination: string;
+  egm_no: string;
+  egm_date: string;
+  fob_value: number;
+  freight: number;
+  insurance: number;
+  net_weight: string;
+  gross_weight: string;
+  no_of_packages: string;
+  marks_nos: string;
+  remarks: string;
+  status: InvoiceStatus;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+  items?: EntryItem[];
+}
+
+// The subset of fields the Entry form collects (selectors + auto-filled
+// snapshots + manual export references). Unused export/shipping columns on the
+// table fall back to their DB defaults.
+export type EntryFormValues = {
+  customer_id: number | null;
+  invoice_id: number | null;
+  purchase_order_id: number | null;
+  customer_name: string;
+  customer_address: string;
+  invoice_number: string;
+  invoice_date: string;
+  po_number: string;
+  po_date: string;
+  customer_po_no: string;
+  currency: Currency;
+  exchange_rate: number;
+  invoice_total: number;
+  items: EntryItem[];
+  local_invoice_no: string;
+  local_invoice_date: string;
+  shipping_bill_no: string;
+  shipping_bill_date: string;
+  bl_awb_no: string;
+  bl_awb_date: string;
+  status: InvoiceStatus;
+};

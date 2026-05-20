@@ -332,5 +332,82 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 20,
+            description: "create_entries",
+            // Consolidated export entry: optional links to a customer, invoice and PO,
+            // denormalized snapshots of their key fields at entry time, plus the manual
+            // export/shipping fields (shipping bill, BL/AWB, EGM, FOB/freight/insurance,
+            // container, weights) that are not captured by any existing module.
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                    customer_id INTEGER REFERENCES customers(id),
+                    invoice_id INTEGER REFERENCES invoices(id),
+                    purchase_order_id INTEGER REFERENCES purchase_orders(id),
+
+                    customer_name TEXT NOT NULL DEFAULT '',
+                    customer_address TEXT NOT NULL DEFAULT '',
+                    invoice_number TEXT NOT NULL DEFAULT '',
+                    invoice_date TEXT NOT NULL DEFAULT '',
+                    po_number TEXT NOT NULL DEFAULT '',
+                    customer_po_no TEXT NOT NULL DEFAULT '',
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    exchange_rate REAL NOT NULL DEFAULT 1.0,
+
+                    shipping_bill_no TEXT NOT NULL DEFAULT '',
+                    shipping_bill_date TEXT NOT NULL DEFAULT '',
+                    bl_awb_no TEXT NOT NULL DEFAULT '',
+                    bl_awb_date TEXT NOT NULL DEFAULT '',
+                    vessel_flight_no TEXT NOT NULL DEFAULT '',
+                    container_no TEXT NOT NULL DEFAULT '',
+                    transport_mode TEXT NOT NULL DEFAULT 'BY SEA',
+                    port_of_loading TEXT NOT NULL DEFAULT '',
+                    port_of_discharge TEXT NOT NULL DEFAULT '',
+                    final_destination TEXT NOT NULL DEFAULT '',
+                    egm_no TEXT NOT NULL DEFAULT '',
+                    egm_date TEXT NOT NULL DEFAULT '',
+                    fob_value REAL NOT NULL DEFAULT 0.0,
+                    freight REAL NOT NULL DEFAULT 0.0,
+                    insurance REAL NOT NULL DEFAULT 0.0,
+                    net_weight TEXT NOT NULL DEFAULT '',
+                    gross_weight TEXT NOT NULL DEFAULT '',
+                    no_of_packages TEXT NOT NULL DEFAULT '',
+                    marks_nos TEXT NOT NULL DEFAULT '',
+                    remarks TEXT NOT NULL DEFAULT '',
+
+                    status TEXT NOT NULL DEFAULT 'draft'
+                        CHECK(status IN ('draft', 'final')),
+                    created_by INTEGER REFERENCES users(id),
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_entries_customer_id
+                    ON entries(customer_id);
+                CREATE INDEX IF NOT EXISTS idx_entries_invoice_id
+                    ON entries(invoice_id);
+                CREATE INDEX IF NOT EXISTS idx_entries_purchase_order_id
+                    ON entries(purchase_order_id);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 21,
+            description: "add_entry_form_fields",
+            // Fields the Entry form auto-fills from the selected invoice/PO (po_date,
+            // invoice_total, line-item snapshot) plus the manual local-invoice pair.
+            // Appended rather than folded into migration 20 so DBs that already ran 20
+            // pick the columns up cleanly.
+            sql: r#"
+                ALTER TABLE entries ADD COLUMN po_date TEXT NOT NULL DEFAULT '';
+                ALTER TABLE entries ADD COLUMN local_invoice_no TEXT NOT NULL DEFAULT '';
+                ALTER TABLE entries ADD COLUMN local_invoice_date TEXT NOT NULL DEFAULT '';
+                ALTER TABLE entries ADD COLUMN invoice_total REAL NOT NULL DEFAULT 0.0;
+                ALTER TABLE entries ADD COLUMN items TEXT NOT NULL DEFAULT '[]';
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
