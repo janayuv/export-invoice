@@ -19,6 +19,8 @@ export async function exportInvoiceExcel(
   const refs = invoiceReferenceRows(invoice, company);
   const rateLabel = rateColumnLabel(invoice.incoterm, invoice.currency);
 
+  const hasLogo = Boolean(company.company_logo_base64);
+
   const exporterRows: (string | number | null)[][] = [
     [company.name],
     [company.address],
@@ -30,7 +32,13 @@ export async function exportInvoiceExcel(
   // refs[0] = Invoice No & date — rendered as its own prominent row
   const bodyRefs = refs.slice(1);
 
+  // Reserve 3 blank rows at the top when a logo is present so the
+  // image anchor has visual space. Content shifts down by LOGO_ROWS.
+  const LOGO_ROWS = 3;
+  const LOGO_ROW_HEIGHT_PT = 20; // 3 × 20 pt ≈ 60 pt total
+
   const rows: (string | number | null)[][] = [
+    ...(hasLogo ? Array.from({ length: LOGO_ROWS }, () => [] as (string | number | null)[]) : []),
     [invoice.transport_mode, "", "INVOICE CUM PACKING LIST"],
     ["", "", `INVOICE NO: ${invoice.invoice_number}    DATE: ${formatInvoiceDisplayDate(invoice.invoice_date)}`],
     [],
@@ -52,14 +60,6 @@ export async function exportInvoiceExcel(
       invoice.place_of_receipt,
       "Country of Origin of Goods",
       invoice.country_of_origin,
-    ],
-    [
-      "",
-      invoice.pre_carrier,
-      "Pre carrier",
-      "",
-      "Country of Final Destination",
-      invoice.country_of_destination,
     ],
     [
       "Vessel",
@@ -135,6 +135,42 @@ export async function exportInvoiceExcel(
     { wch: 18 },  // Rate
     { wch: 18 },  // Amount
   ];
+
+  if (hasLogo) {
+    // Set heights for the reserved logo rows.
+    ws["!rows"] = Array.from({ length: LOGO_ROWS }, () => ({ hpt: LOGO_ROW_HEIGHT_PT }));
+
+    const m = company.company_logo_base64.match(/^data:(image\/[\w+]+);base64,(.+)$/);
+    if (m) {
+      const mimeType = m[1];
+      const b64 = m[2];
+      const ext = mimeType.split("/")[1];
+
+      // Decode base64 → Uint8Array (atob is available in WebView / browser).
+      const raw = atob(b64);
+      const buf = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+
+      // !images is a SheetJS Pro feature; XLSX CE 0.18.x silently ignores it at
+      // write time. The structure below is correct for a Pro build or a future
+      // library upgrade — CE will still produce blank reserved rows above the data.
+      (ws as Record<string, unknown>)["!images"] = [
+        {
+          name: `logo.${ext}`,
+          data: buf,
+          type: mimeType,
+          position: {
+            type: "absoluteAnchor",
+            x: 0,
+            y: 0,
+            // 1 pt = 12700 EMU; width ≈ 120 pt, height = reserved row area
+            w: 120 * 12700,
+            h: LOGO_ROWS * LOGO_ROW_HEIGHT_PT * 12700,
+          },
+        },
+      ];
+    }
+  }
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Invoice");

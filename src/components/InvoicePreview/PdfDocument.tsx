@@ -3,6 +3,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Invoice, CompanySettings } from "@/lib/types";
@@ -59,13 +60,38 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
     <Document>
       <Page size="A4" style={s.page}>
         <View style={s.outer}>
-          {/* Transport mode + centered title */}
-          <View style={[s.row, s.borderB]}>
-            <View style={[s.borderR, { width: 56, justifyContent: "center", alignItems: "center", padding: 4 }]}>
-              <Text style={[s.bold, { fontSize: 8 }]}>{invoice.transport_mode}</Text>
+          {/* Single header row: Logo | Title | BY SEA */}
+          <View style={[s.row, s.borderB, { alignItems: "stretch" }]}>
+            <View
+              style={{
+                width: 85,
+                padding: 4,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#ecfdf5",
+                borderRight: "1pt solid #000",
+              }}
+            >
+              {company.company_logo_base64 ? (
+                <Image
+                  src={company.company_logo_base64}
+                  style={{ width: 72, height: 34, objectFit: "contain" }}
+                />
+              ) : null}
             </View>
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 5 }}>
-              <Text style={[s.bold, { fontSize: 11 }]}>INVOICE CUM PACKING LIST</Text>
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 8 }}>
+              <Text style={[s.bold, { fontSize: 13.5 }]}>INVOICE CUM PACKING LIST</Text>
+            </View>
+            <View
+              style={{
+                width: 70,
+                borderLeft: "1pt solid #000",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 4,
+              }}
+            >
+              <Text style={[s.bold, { fontSize: 9.5 }]}>{invoice.transport_mode}</Text>
             </View>
           </View>
 
@@ -111,13 +137,6 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
                 borderB
               />
               <ShipCell
-                leftLabel=""
-                leftValue={invoice.pre_carrier}
-                rightLabel="Pre carrier"
-                rightValue=""
-                borderB
-              />
-              <ShipCell
                 leftLabel="Vessel"
                 leftValue={invoice.vessel}
                 rightLabel="Port of Loading"
@@ -138,13 +157,9 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
                 <Text style={{ marginTop: 2 }}>{invoice.buyer_if_other}</Text>
               </View>
               <View style={[s.row, s.borderB]}>
-                <View style={[s.borderR, { width: "50%", padding: 4 }]}>
+                <View style={{ width: "100%", padding: 4 }}>
                   <Text style={s.label}>Country of Origin of Goods</Text>
                   <Text style={[s.bold, { marginTop: 2 }]}>{invoice.country_of_origin}</Text>
-                </View>
-                <View style={{ width: "50%", padding: 4 }}>
-                  <Text style={s.label}>Country of Final Destination</Text>
-                  <Text style={[s.bold, { marginTop: 2 }]}>{invoice.country_of_destination}</Text>
                 </View>
               </View>
               <View style={{ flexGrow: 1, flexDirection: "column" }}>

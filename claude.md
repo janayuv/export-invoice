@@ -4,48 +4,71 @@
 
 ---
 
-## AGENT GUIDELINES — RECENT IMPLEMENTATION (2025)
+## AGENT GUIDELINES — CURRENT IMPLEMENTATION (2026)
 
 Use this block when extending invoice/PO flows or export layouts.
 
-### 1. What changed
+### 1. What is built
 
 - **Dual PO numbering:** Internal `po_number` (`PO/{seq}/{FY}`) is app-generated; `customer_po_no` is the number on the customer's document and becomes invoice `buyer_order_no` when loading from a PO.
-- **Invoice ↔ PO link:** `invoices.purchase_order_id` (migration 11) is set from the invoice form; create/edit UI picks a customer, then a PO via `getPurchaseOrdersByCustomerId()`, then applies `mapPurchaseOrderToInvoiceFields()`.
-- **Shared document layer:** `src/lib/invoiceDocument.ts` centralizes reference-row labels/values, `DD.MM.YYYY` display dates, `fmtAmount`, and `amountInWords` for HTML preview, PDF, and Excel.
-- **Export layout refresh:** `InvoicePreview`, `PdfDocument`, and `excel.ts` share the same header reference order and packing-list grid (black borders, consignee + shipping left / buyer + countries + terms right, `EX WORK {currency}` rate columns).
-- **PO persistence:** `normalizePOFormValues()` trims text and recomputes line totals before INSERT/UPDATE; PO forms validate with `poFormSchema` / `poItemSchema` in `schemas.ts`.
+- **Invoice ↔ PO link:** `invoices.purchase_order_id` (migration 11) is set from the invoice form. The create/edit UI picks a customer, then a PO via `getPurchaseOrdersByCustomerId()`, then applies `mapPurchaseOrderToInvoiceFields()`.
+- **Delivery address → consignee mapping:** In `mapPurchaseOrderToInvoiceFields`, if `po.delivery_address` is non-empty and differs from `po.customer_address`, the first line of `delivery_address` becomes `consignee_name`, the full `delivery_address` becomes `consignee_address`, and the customer name+address is placed in `buyer_if_other`. Otherwise consignee = customer.
+- **SA number per line item:** `sa_number` column on both `purchase_order_items` and `invoice_items` (migration 15). Transferred from PO lines when loading from PO.
+- **`show_sa_number` flag:** Per-document boolean on both `purchase_orders` and `invoices` (migration 16). Controls SA Number column visibility in PDF GOODS table. Column widths adjust dynamically when the flag is false.
+- **Incoterm per invoice:** `incoterm` column on `invoices` (migration 13). Replaces the old hardcoded "EX WORK" rate column label. `rateColumnLabel(incoterm, currency)` returns `"{incoterm} {currency}"` when set, else just `currency`.
+- **Packing list JSON:** `packing_list` stored as TEXT (JSON array) on `invoices` (migration 17). Holds `PackingListItem[]` rows with marks, pkgs, dimensions, and per-row weight. Rendered as a separate PACKING LIST section below GOODS in PDF and Excel. Loaded via `JSON.parse` in `getInvoice()`.
+- **Company logo:** `company_logo_base64` on `company_settings` (migration 18). Uploaded in Settings (max 2 MB, stored as data-URL). Rendered in PDF header (left cell). In Excel, 3 reserved rows + `!images` (SheetJS CE silently ignores `!images` — Pro feature).
+- **Shared document layer:** `src/lib/invoiceDocument.ts` exports `formatInvoiceDisplayDate`, `invoiceReferenceRows`, `fmtAmount`, `amountInWords`, and `rateColumnLabel` — consumed by HTML preview, PDF, and Excel; do not reimplement them.
 - **Build:** Tauri `bundle.targets` is `["msi", "nsis"]` (Windows installers only).
+- **Purchase Order improvement – DELIVER TO field:** Now reuses exact Customer selector (auto-fetches record + address like main Customer field). Fixed duplicate name in form + restored full name+address in delivery_address so it appears correctly after save in PO view. Only frontend form updated in PurchaseOrderNew.tsx. Sessions 1-4 completed.
+- **Purchase Order improvement – DELIVER TO field:** Now reuses exact Customer selector (auto-fetches record + address like main Customer field). Fixed duplicate customer name in form, PO view, and generated Invoice Consignee section (clean name + address). Sessions 1-6 completed.
+- **Invoice logic improvement (May 2026):**
+  • Added `port_of_discharge` + `final_destination` to `PurchaseOrder` (Rust + TS + migration 19).
+  • Invoice now uses PO delivery fields when present/non-empty; falls back to buyer details otherwise.
+  • Inline comments added for future clarity.
 
-### 2. Files affected
+### 2. Files affected (by area)
 
 | Area | Paths |
 |---|---|
-| Schema | `src-tauri/src/db/schema.rs` (migrations 11–12) |
-| PO CRUD | `src/hooks/usePurchaseOrders.ts` |
+| Schema | `src-tauri/src/db/schema.rs` (migrations 1–19) |
+| Types | `src/lib/types.ts`, `src/lib/schemas.ts` |
 | Invoice CRUD | `src/hooks/useInvoices.ts` |
+| PO CRUD | `src/hooks/usePurchaseOrders.ts` |
 | PO → invoice mapping | `src/lib/invoiceFromPo.ts` |
-| Validation | `src/lib/schemas.ts`, `src/lib/types.ts` |
+| Company settings | `src/hooks/useSettings.ts` |
 | Invoice form UI | `src/routes/InvoiceNew.tsx` |
+| Invoice detail | `src/routes/InvoiceDetail.tsx` |
 | PO UI | `src/routes/PurchaseOrderNew.tsx`, `PurchaseOrderList.tsx`, `PurchaseOrderDetail.tsx` |
-| Exports | `src/lib/invoiceDocument.ts`, `src/lib/excel.ts`, `src/components/InvoicePreview/index.tsx`, `PdfDocument.tsx` |
-| Config | `src-tauri/tauri.conf.json` |
+| Settings UI | `src/routes/Settings.tsx` |
+| Shared doc utilities | `src/lib/invoiceDocument.ts` |
+| PDF export | `src/lib/pdf.ts`, `src/components/InvoicePreview/PdfDocument.tsx` |
+| Excel export | `src/lib/excel.ts` |
+| HTML preview | `src/components/InvoicePreview/index.tsx` |
 
 ### 3. Patterns to follow
 
-- **Invoice outputs:** Import `invoiceReferenceRows`, `formatInvoiceDisplayDate`, `amountInWords`, and `fmtAmount` from `@/lib/invoiceDocument` — do not reimplement reference rows or date formatting per format.
-- **Pre-fill from PO:** Call `mapPurchaseOrderToInvoiceFields(po, customer)`; persist `purchase_order_id` and mapped `buyer_order_no` via `createInvoice` / `updateInvoice`.
-- **PO picker:** `getPurchaseOrdersByCustomerId(customerId)` → `PurchaseOrderSummary[]`; PO select value `__none__` (`PO_SELECT_NONE`) means no linked PO.
-- **PO saves:** Run `normalizePOFormValues(data)` inside `createPurchaseOrder` / `updatePurchaseOrder` (already wired); validate UI with `poFormSchema.safeParse` before save.
-- **Edit invoice pickers:** Load form once (`editFormLoadedRef`); sync customer/PO comboboxes after customers load using `purchase_order_id` + `getPurchaseOrder` (see `InvoiceNew.tsx`).
+- **Invoice outputs:** Import `invoiceReferenceRows`, `formatInvoiceDisplayDate`, `amountInWords`, `fmtAmount`, and `rateColumnLabel` from `@/lib/invoiceDocument`. Never reimplement these per format.
+- **Rate column label:** Always call `rateColumnLabel(invoice.incoterm, invoice.currency)` — not a hardcoded string.
+- **SA number column:** Read `invoice.show_sa_number` to toggle the SA Number column and adjust widths in all output paths.
+- **Packing list:** `invoice.packing_list` is `PackingListItem[]` parsed from JSON. Render as a distinct PACKING LIST section (not mixed with invoice items).
+- **Pre-fill from PO:** Call `mapPurchaseOrderToInvoiceFields(po, customer)` — includes delivery_address→consignee logic and `show_sa_number` transfer.
+- **PO saves:** Run `normalizePOFormValues(data)` inside `createPurchaseOrder` / `updatePurchaseOrder` (already wired). Validate UI with `poFormSchema.safeParse` before save.
+- **Edit invoice pickers:** Load form once (`editFormLoadedRef`); sync customer/PO comboboxes after customers load using `purchase_order_id` + `getPurchaseOrder`.
 
-### 4. Deprecated patterns (avoid)
+### 4. Deprecated / avoid
 
+- Hardcoding `"EX WORK {currency}"` — use `rateColumnLabel()`.
 - Putting the customer's PO number in `po_number` or deriving `buyer_order_no` from the internal `PO/…` sequence.
-- Duplicating header fields (invoice no, buyer's order, LUT, HS code, etc.) in PdfDocument, InvoicePreview, or excel.ts instead of `invoiceReferenceRows()`.
-- Implementing `amountInWords` in `excel.ts` (moved to `invoiceDocument.ts`).
-- Updating source PO line quantities when the user edits qty on a saved invoice (invoice items only).
+- Duplicating `invoiceReferenceRows`, `amountInWords`, or date formatting in PdfDocument, InvoicePreview, or excel.ts.
 - Resetting the full invoice form on every customer-list refresh during edit mode.
+- Updating source PO line quantities when the user edits qty on a saved invoice.
+
+### 5. Known bugs (do not paper over)
+
+- `updateInvoice` in `useInvoices.ts` omits `sa_number` from the item re-INSERT — items lose their SA number on edit-save.
+- `createPurchaseOrder` / `updatePurchaseOrder` do not persist `show_sa_number` — flag always writes as the column default (`TRUE`).
+- `generatePONumber` commits the sequence counter as a side effect of previewing the number; `generateInvoiceNumber` is correctly read-only.
 
 ---
 
@@ -57,8 +80,8 @@ Use this block when extending invoice/PO flows or export layouts.
 
 Core capabilities:
 - Create and finalize export invoices with full shipping metadata
-- Generate **Invoice-cum-Packing List** PDFs (A4, ready to print)
-- Export invoices to Excel (.xlsx)
+- Generate **Invoice-cum-Packing List** PDFs (A4) — two sections: GOODS and PACKING LIST
+- Export invoices to Excel (.xlsx) with matching two-section layout
 - Manage purchase orders tied to customer master records
 - Role-based access control (admin / operator / viewer) with PIN authentication
 - SQLite-backed persistence — fully offline, no cloud dependency
@@ -73,16 +96,16 @@ Core capabilities:
 | Build tool | Vite | 7 |
 | Styling | Tailwind CSS | 3.4 |
 | Routing | React Router | 6 |
-| Form management | React Hook Form | latest |
-| Validation | Zod | latest |
-| PDF generation | @react-pdf/renderer | latest |
-| Excel generation | xlsx (SheetJS) | latest |
+| Form management | React Hook Form | 7 |
+| Validation | Zod | 4 |
+| PDF generation | @react-pdf/renderer | 4 |
+| Excel generation | xlsx (SheetJS CE) | 0.18 |
 | Database | SQLite via tauri-plugin-sql | 2.4.0 |
 | File I/O | tauri-plugin-fs | 2.5.1 |
 | File dialogs | tauri-plugin-dialog | 2.7.1 |
 | UI primitives | shadcn/ui + Base UI | latest |
 | Icons | Lucide React | latest |
-| Notifications | Sonner (toast) | latest |
+| Notifications | Sonner | latest |
 | Backend language | Rust | stable |
 
 ### Repository Layout
@@ -97,46 +120,46 @@ D:\Export-Invoice/
 ├── postcss.config.js
 ├── components.json               # shadcn/ui configuration
 ├── src/
-│   ├── main.tsx                  # React entry point
+│   ├── main.tsx
 │   ├── App.tsx                   # Router + AuthProvider root
-│   ├── index.css                 # Tailwind directives + global styles
+│   ├── index.css
 │   ├── components/
 │   │   ├── InvoicePreview/
-│   │   │   ├── index.tsx         # HTML screen preview component
-│   │   │   └── PdfDocument.tsx   # @react-pdf/renderer PDF layout
+│   │   │   ├── index.tsx         # HTML screen preview
+│   │   │   └── PdfDocument.tsx   # @react-pdf/renderer layout
 │   │   ├── LineItemsTable/
 │   │   │   └── index.tsx         # Dynamic line items with auto-totals
 │   │   ├── layout/
-│   │   │   └── Layout.tsx        # App shell (sidebar + content)
+│   │   │   └── Layout.tsx
 │   │   └── ui/                   # shadcn/ui primitives
 │   ├── contexts/
-│   │   └── AuthContext.tsx       # Session + permission management
+│   │   └── AuthContext.tsx
 │   ├── hooks/
 │   │   ├── useInvoices.ts        # Invoice CRUD + list hook
 │   │   ├── usePurchaseOrders.ts  # PO CRUD + list hook
-│   │   └── useSettings.ts       # Company settings hook
+│   │   └── useSettings.ts        # Company settings + logo hook
 │   ├── lib/
-│   │   ├── auth.ts               # PIN hashing, user queries, permissions
-│   │   ├── customer.ts           # Customer master CRUD (+ Customer types)
+│   │   ├── auth.ts               # PIN hashing, permissions, canEditInvoiceByStatus
+│   │   ├── customer.ts           # Customer master CRUD + Customer type
 │   │   ├── db.ts                 # SQLite singleton connection
-│   │   ├── excel.ts              # xlsx export (uses invoiceDocument helpers)
-│   │   ├── invoiceDocument.ts    # Shared refs, dates, fmtAmount, amountInWords
-│   │   ├── invoiceFromPo.ts      # PO → invoice field mapping
+│   │   ├── excel.ts              # xlsx export
+│   │   ├── invoiceDocument.ts    # Shared: refs, dates, fmtAmount, amountInWords, rateColumnLabel
+│   │   ├── invoiceFromPo.ts      # PO → invoice field mapping (incl. delivery_address logic)
 │   │   ├── pdf.ts                # PDF export via @react-pdf/renderer
-│   │   ├── schemas.ts            # Zod schemas (company, invoice, PO)
-│   │   ├── types.ts              # Invoice + company types
-│   │   └── utils.ts              # cn() classname helper
+│   │   ├── schemas.ts            # Zod schemas (company, invoice, PO, packing list)
+│   │   ├── types.ts              # TypeScript interfaces
+│   │   └── utils.ts              # cn() helper
 │   └── routes/
 │       ├── LoginScreen.tsx
 │       ├── SetupAdmin.tsx
 │       ├── Dashboard.tsx
 │       ├── InvoiceList.tsx
-│       ├── InvoiceNew.tsx
-│       ├── InvoiceDetail.tsx
+│       ├── InvoiceNew.tsx        # Create + edit invoice (single form)
+│       ├── InvoiceDetail.tsx     # View + export + finalize
 │       ├── PurchaseOrderList.tsx
 │       ├── PurchaseOrderNew.tsx
 │       ├── PurchaseOrderDetail.tsx
-│       ├── Settings.tsx
+│       ├── Settings.tsx          # Company info + banking + logo (single page, no tabs)
 │       ├── CustomerManagement.tsx
 │       └── UserManagement.tsx
 └── src-tauri/
@@ -147,12 +170,9 @@ D:\Export-Invoice/
     └── src/
         ├── main.rs
         ├── lib.rs
-        ├── commands/
-        │   ├── mod.rs
-        │   └── invoice.rs        # Custom Tauri commands (currently unused)
         └── db/
             ├── mod.rs
-            └── schema.rs         # 12 SQL migration definitions
+            └── schema.rs         # 18 SQL migration definitions
 ```
 
 ---
@@ -161,31 +181,32 @@ D:\Export-Invoice/
 
 ### 2.1 Database Schema (SQLite)
 
-All tables are created via numbered Rust migrations in `src-tauri/src/db/schema.rs`. Migrations are applied in order at application startup via `tauri-plugin-sql`.
+All tables are created via numbered Rust migrations in `src-tauri/src/db/schema.rs`.
 
-#### Table: `company_settings` (Exporter / Seller Details)
+#### Table: `company_settings`
 
-Stores a single row (`id = 1`) for the exporter's profile.
+Stores a single row (`id = 1`).
 
 ```sql
 CREATE TABLE IF NOT EXISTS company_settings (
-  id               INTEGER PRIMARY KEY,
-  name             TEXT    DEFAULT '',
-  address          TEXT    DEFAULT '',
-  gstin            TEXT    DEFAULT '',
-  pan              TEXT    DEFAULT '',
-  iec              TEXT    DEFAULT '',
-  bank_name        TEXT    DEFAULT '',
-  bank_account     TEXT    DEFAULT '',
-  ifsc             TEXT    DEFAULT '',
-  swift            TEXT    DEFAULT '',
-  bank_ad_code     TEXT    DEFAULT '',
-  lut_arn_no       TEXT    DEFAULT '',
-  lut_arn_date     TEXT    DEFAULT '',
-  place            TEXT    DEFAULT '',
-  signatory_name   TEXT    DEFAULT '',
-  created_at       TEXT    DEFAULT (datetime('now')),
-  updated_at       TEXT    DEFAULT (datetime('now'))
+  id                  INTEGER PRIMARY KEY,
+  name                TEXT    DEFAULT '',
+  address             TEXT    DEFAULT '',
+  gstin               TEXT    DEFAULT '',
+  pan                 TEXT    DEFAULT '',
+  iec                 TEXT    DEFAULT '',
+  bank_name           TEXT    DEFAULT '',
+  bank_account        TEXT    DEFAULT '',
+  ifsc                TEXT    DEFAULT '',
+  swift               TEXT    DEFAULT '',
+  bank_ad_code        TEXT    DEFAULT '',
+  lut_arn_no          TEXT    DEFAULT '',
+  lut_arn_date        TEXT    DEFAULT '',
+  place               TEXT    DEFAULT '',
+  signatory_name      TEXT    DEFAULT '',
+  company_logo_base64 TEXT    DEFAULT '',   -- migration 18: base64 data-URL, '' = no logo
+  created_at          TEXT    DEFAULT (datetime('now')),
+  updated_at          TEXT    DEFAULT (datetime('now'))
 );
 ```
 
@@ -219,11 +240,13 @@ CREATE TABLE IF NOT EXISTS invoices (
   net_weight              TEXT    DEFAULT '',
   gross_weight            TEXT    DEFAULT '',
   notes                   TEXT    DEFAULT '',
-  status                  TEXT    DEFAULT 'draft'
-                          CHECK(status IN ('draft', 'final')),
-  purchase_order_id       INTEGER REFERENCES purchase_orders(id),
-  created_by              INTEGER REFERENCES users(id),
-  finalized_by            INTEGER REFERENCES users(id),
+  status                  TEXT    DEFAULT 'draft' CHECK(status IN ('draft', 'final')),
+  purchase_order_id       INTEGER REFERENCES purchase_orders(id),   -- migration 11
+  created_by              INTEGER REFERENCES users(id),             -- migration 6
+  finalized_by            INTEGER REFERENCES users(id),             -- migration 6
+  incoterm                TEXT    DEFAULT '',                        -- migration 13: e.g. EXW, FOB, CIF
+  show_sa_number          BOOLEAN DEFAULT TRUE,                     -- migration 16
+  packing_list            TEXT    DEFAULT '[]',                     -- migration 17: JSON PackingListItem[]
   created_at              TEXT    DEFAULT (datetime('now')),
   updated_at              TEXT    DEFAULT (datetime('now'))
 );
@@ -233,63 +256,20 @@ CREATE TABLE IF NOT EXISTS invoices (
 
 ```sql
 CREATE TABLE IF NOT EXISTS invoice_items (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  invoice_id    INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
-  sr_no         INTEGER NOT NULL,
-  marks_nos     TEXT    DEFAULT '',
-  no_of_pkgs    TEXT    DEFAULT '',
-  dimensions    TEXT    DEFAULT '',
-  part_number   TEXT    DEFAULT '',
-  description   TEXT    DEFAULT '',
-  quantity      REAL    DEFAULT 1.0,
-  unit          TEXT    DEFAULT 'NOS',
-  unit_price    REAL    DEFAULT 0.0,
-  total_amount  REAL    DEFAULT 0.0
-);
-CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
-```
-
-#### Table: `invoice_sequence`
-
-```sql
-CREATE TABLE IF NOT EXISTS invoice_sequence (
-  year         INTEGER PRIMARY KEY,
-  last_number  INTEGER DEFAULT 0
-);
-```
-
-#### Table: `users`
-
-```sql
-CREATE TABLE IF NOT EXISTS users (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT    NOT NULL,
-  pin_hash    TEXT    NOT NULL,
-  role        TEXT    DEFAULT 'viewer'
-              CHECK(role IN ('admin', 'operator', 'viewer')),
-  is_active   INTEGER DEFAULT 1,
-  created_at  TEXT    DEFAULT (datetime('now')),
-  updated_at  TEXT    DEFAULT (datetime('now'))
-);
-```
-
-#### Table: `customers`
-
-```sql
-CREATE TABLE IF NOT EXISTS customers (
-  id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-  name                    TEXT    NOT NULL,
-  address                 TEXT    DEFAULT '',
-  country_of_destination  TEXT    DEFAULT '',
-  port_of_discharge       TEXT    DEFAULT '',
-  final_destination       TEXT    DEFAULT '',
-  currency                TEXT    DEFAULT 'USD',
-  pre_carriage_by         TEXT    DEFAULT 'BY ROAD',
-  place_of_receipt        TEXT    DEFAULT 'CHENNAI',
-  pre_carrier             TEXT    DEFAULT 'CHENNAI',
-  port_of_loading         TEXT    DEFAULT 'CHENNAI',
-  created_at              TEXT    DEFAULT (datetime('now')),
-  updated_at              TEXT    DEFAULT (datetime('now'))
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id      INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  sr_no           INTEGER NOT NULL,
+  marks_nos       TEXT    DEFAULT '',
+  no_of_pkgs      TEXT    DEFAULT '',
+  dimensions      TEXT    DEFAULT '',
+  dimensions_unit TEXT    DEFAULT '',   -- migration 14: MM, CM, INCH, etc.
+  part_number     TEXT    DEFAULT '',
+  sa_number       TEXT    DEFAULT '',   -- migration 15: shipping advice reference
+  description     TEXT    DEFAULT '',
+  quantity        REAL    DEFAULT 1.0,
+  unit            TEXT    DEFAULT 'NOS',
+  unit_price      REAL    DEFAULT 0.0,
+  total_amount    REAL    DEFAULT 0.0
 );
 ```
 
@@ -298,20 +278,20 @@ CREATE TABLE IF NOT EXISTS customers (
 ```sql
 CREATE TABLE IF NOT EXISTS purchase_orders (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  po_number        TEXT    NOT NULL UNIQUE,
+  po_number        TEXT    NOT NULL UNIQUE,   -- internal: PO/{seq}/{FY}
   po_date          TEXT    NOT NULL,
   customer_id      INTEGER REFERENCES customers(id),
-  customer_name    TEXT    DEFAULT '',
+  customer_name    TEXT    DEFAULT '',        -- denormalized snapshot at save
   customer_address TEXT    DEFAULT '',
-  customer_po_no   TEXT    DEFAULT '',   -- Customer's PO number (as on their document)
-  delivery_date    TEXT    DEFAULT '',   -- PO expiry date in the UI
-  delivery_address TEXT    DEFAULT '',
+  customer_po_no   TEXT    DEFAULT '',        -- migration 12: → invoice buyer_order_no
+  delivery_date    TEXT    DEFAULT '',
+  delivery_address TEXT    DEFAULT '',        -- if set+different → consignee fields on invoice load
   payment_terms    TEXT    DEFAULT '',
   currency         TEXT    DEFAULT 'INR',
   exchange_rate    REAL    DEFAULT 1.0,
   notes            TEXT    DEFAULT '',
-  status           TEXT    DEFAULT 'draft'
-                   CHECK(status IN ('draft', 'confirmed', 'closed')),
+  status           TEXT    DEFAULT 'draft' CHECK(status IN ('draft', 'confirmed', 'closed')),
+  show_sa_number   BOOLEAN DEFAULT TRUE,      -- migration 16: transferred to invoice on PO load
   created_by       INTEGER REFERENCES users(id),
   created_at       TEXT    DEFAULT (datetime('now')),
   updated_at       TEXT    DEFAULT (datetime('now'))
@@ -322,153 +302,132 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 
 ```sql
 CREATE TABLE IF NOT EXISTS purchase_order_items (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  po_id         INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-  sr_no         INTEGER NOT NULL,
-  part_number   TEXT    DEFAULT '',
-  description   TEXT    DEFAULT '',
-  quantity      REAL    DEFAULT 1.0,
-  unit          TEXT    DEFAULT 'NOS',
-  unit_price    REAL    DEFAULT 0.0,
-  total_amount  REAL    DEFAULT 0.0
-);
-CREATE INDEX IF NOT EXISTS idx_po_items_po_id ON purchase_order_items(po_id);
-```
-
-#### Table: `po_sequence`
-
-```sql
-CREATE TABLE IF NOT EXISTS po_sequence (
-  year         INTEGER PRIMARY KEY,
-  last_number  INTEGER DEFAULT 0
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id        INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  sr_no        INTEGER NOT NULL,
+  part_number  TEXT    DEFAULT '',
+  sa_number    TEXT    DEFAULT '',   -- migration 15
+  description  TEXT    DEFAULT '',
+  quantity     REAL    DEFAULT 1.0,
+  unit         TEXT    DEFAULT 'NOS',
+  unit_price   REAL    DEFAULT 0.0,
+  total_amount REAL    DEFAULT 0.0
 );
 ```
+
+Other tables unchanged from initial migrations: `invoice_sequence`, `po_sequence`, `users`, `customers`.
 
 ---
 
-### 2.2 TypeScript Interfaces
-
-Types are split across modules: `src/lib/types.ts` (invoice, company), `src/lib/customer.ts` (customer), `src/hooks/usePurchaseOrders.ts` (purchase order).
+### 2.2 TypeScript Interfaces (`src/lib/types.ts`)
 
 ```typescript
-// ─── Primitive Enumerations ───────────────────────────────────────────────────
-
 export type InvoiceStatus  = "draft" | "final";
-export type POStatus       = "draft" | "confirmed" | "closed";
 export type Currency       = "USD" | "EUR" | "GBP" | "AED" | "INR";
-export type TransportMode  = "BY SEA" | "BY AIR" | "BY ROAD";
+export type TransportMode  = "BY SEA" | "BY AIR" | "BY ROAD" | "BY COURIER";
 export type UserRole       = "admin" | "operator" | "viewer";
 
-// ─── Company / Exporter ───────────────────────────────────────────────────────
-
 export interface CompanySettings {
-  id:             number;   // Always 1 (singleton row)
-  name:           string;   // Legal entity name
-  address:        string;   // Registered address (multi-line)
-  gstin:          string;   // 15-char GST Identification Number
-  pan:            string;   // 10-char Permanent Account Number
-  iec:            string;   // Importer-Exporter Code (10 chars)
-  bank_name:      string;   // Remittance bank name
-  bank_account:   string;   // Bank account number
-  ifsc:           string;   // 11-char IFSC code
-  swift:          string;   // 8 or 11-char SWIFT/BIC code
-  bank_ad_code:   string;   // Authorised Dealer bank code
-  lut_arn_no:     string;   // Letter of Undertaking ARN reference
-  lut_arn_date:   string;   // LUT ARN date (ISO date string)
-  place:          string;   // City used in signatory block
-  signatory_name: string;   // Name printed on signature block
-  created_at:     string;   // ISO datetime
-  updated_at:     string;   // ISO datetime
+  id:                  number;
+  name:                string;
+  address:             string;
+  gstin:               string;
+  pan:                 string;
+  iec:                 string;
+  bank_name:           string;
+  bank_account:        string;
+  ifsc:                string;
+  swift:               string;
+  bank_ad_code:        string;
+  lut_arn_no:          string;
+  lut_arn_date:        string;
+  place:               string;
+  signatory_name:      string;
+  company_logo_base64: string;   // base64 data-URL; '' = no logo
+  created_at:          string;
+  updated_at:          string;
 }
-
-// ─── Invoice ──────────────────────────────────────────────────────────────────
 
 export interface Invoice {
   id:                     number;
-  invoice_number:         string;         // e.g. "EXP/25/2025-26"
-  invoice_date:           string;         // ISO date "YYYY-MM-DD"
+  invoice_number:         string;
+  invoice_date:           string;         // ISO "YYYY-MM-DD"
   transport_mode:         TransportMode;
-  buyer_order_no:         string;         // Customer PO no. (from PO.customer_po_no when loaded from PO)
-  purchase_order_id:      number | null;  // FK → purchase_orders.id (optional link)
-  duty_drawback:          string;         // Duty drawback claim number
-  hs_code:                string;         // Harmonised System code
-  other_references:       string;         // Miscellaneous references
-  consignee_name:         string;         // Importer company name
-  consignee_address:      string;         // Full delivery address
-  buyer_if_other:         string;         // Buyer address if different from consignee
-  country_of_origin:      string;         // Default: "INDIA"
+  buyer_order_no:         string;         // = customer_po_no when loaded from PO
+  duty_drawback:          string;
+  hs_code:                string;
+  other_references:       string;
+  consignee_name:         string;
+  consignee_address:      string;
+  buyer_if_other:         string;
+  country_of_origin:      string;
   country_of_destination: string;
-  pre_carriage_by:        string;         // "BY ROAD", "BY RAIL", etc.
-  place_of_receipt:       string;         // Inland container depot / factory
-  pre_carrier:            string;         // Truck / train carrier name
-  vessel:                 string;         // Vessel / flight identifier
-  port_of_loading:        string;         // e.g. "CHENNAI SEA PORT"
-  port_of_discharge:      string;         // Foreign port
-  final_destination:      string;         // End city/country if different from PoD
-  terms_of_payment:       string;         // e.g. "TELEGRAPHIC TRANSFER"
+  pre_carriage_by:        string;
+  place_of_receipt:       string;
+  pre_carrier:            string;
+  vessel:                 string;
+  port_of_loading:        string;
+  port_of_discharge:      string;
+  final_destination:      string;
+  terms_of_payment:       string;
+  incoterm:               string;         // e.g. "EXW", "FOB", "CIF"
   currency:               Currency;
-  exchange_rate:          number;         // Foreign currency per 1 INR
-  net_weight:             string;         // Free-text, e.g. "120.50 KGS"
-  gross_weight:           string;         // Free-text, e.g. "135.00 KGS"
-  notes:                  string;         // Free-text footer notes
+  exchange_rate:          number;
+  net_weight:             string;
+  gross_weight:           string;
+  notes:                  string;
   status:                 InvoiceStatus;
-  created_by:             number | null;  // FK → users.id
-  finalized_by:           number | null;  // FK → users.id
+  show_sa_number:         boolean;        // controls SA Number column in all outputs
+  company_logo_base64?:   string;         // injected at detail view from company settings
+  purchase_order_id?:     number | null;
+  packing_list?:          PackingListItem[];   // parsed from JSON on load
   created_at:             string;
   updated_at:             string;
   items?:                 InvoiceItem[];
 }
 
 export interface InvoiceItem {
-  id:           number;
-  invoice_id:   number;
-  sr_no:        number;         // 1-based sequential
-  marks_nos:    string;         // Marks & Nos on packages
-  no_of_pkgs:   string;         // e.g. "12 CTNS"
-  dimensions:   string;         // e.g. "60×40×30 CMS"
-  part_number:  string;         // SKU / part reference
-  description:  string;         // Product description (required)
-  quantity:     number;         // Numeric quantity
-  unit:         string;         // e.g. "NOS", "KGS", "MTR"
-  unit_price:   number;         // Price per unit in invoice currency
-  total_amount: number;         // quantity × unit_price (computed)
+  id:              number;
+  invoice_id:      number;
+  sr_no:           number;
+  marks_nos:       string;
+  no_of_pkgs:      string;
+  dimensions:      string;
+  dimensions_unit: string;   // MM, CM, INCH, etc.
+  part_number:     string;
+  sa_number:       string;   // shipping advice reference
+  description:     string;
+  quantity:        number;
+  unit:            string;
+  unit_price:      number;
+  total_amount:    number;   // computed: quantity × unit_price
 }
 
-// Form values omit server-generated fields
-export type InvoiceFormValues = Omit<
-  Invoice,
-  "id" | "created_at" | "updated_at" | "items"
-> & {
+export interface PackingListItem {
+  sr_no:           number;
+  marks_nos:       string;
+  no_of_pkgs:      string;
+  dimensions:      string;
+  dimensions_unit: string;
+  net_weight?:     string;
+  gross_weight?:   string;
+}
+
+export type InvoiceFormValues = Omit<Invoice, "id" | "created_at" | "updated_at" | "items"> & {
   items: Omit<InvoiceItem, "id" | "invoice_id">[];
+  packing_list?: PackingListItem[];
 };
+```
 
-// ─── Purchase Order ───────────────────────────────────────────────────────────
+PO interfaces live in `src/hooks/usePurchaseOrders.ts`:
 
-export interface PurchaseOrder {
-  id:               number;
-  po_number:        string;       // e.g. "PO/12/2025-26"
-  po_date:          string;       // ISO date "YYYY-MM-DD"
-  customer_id:      number | null;
-  customer_name:    string;
-  customer_address: string;
-  customer_po_no:   string;       // Customer's PO number (Buyer's Order on invoice)
-  delivery_date:    string;       // PO expiry date
-  delivery_address: string;
-  payment_terms:    string;
-  currency:         string;
-  exchange_rate:    number;
-  notes:            string;
-  status:           POStatus;
-  created_by:       number | null;
-  created_at:       string;
-  items?:           POItem[];
-}
-
+```typescript
 export interface POItem {
   id?:          number;
   po_id?:       number;
   sr_no:        number;
   part_number:  string;
+  sa_number:    string;
   description:  string;
   quantity:     number;
   unit:         string;
@@ -476,185 +435,72 @@ export interface POItem {
   total_amount: number;
 }
 
-export type POFormValues = Omit<
-  PurchaseOrder,
-  "id" | "created_at" | "items"
-> & { items: POItem[] };
+export interface PurchaseOrder {
+  id:               number;
+  po_number:        string;       // internal: PO/{seq}/{FY}
+  po_date:          string;
+  customer_id:      number | null;
+  customer_name:    string;
+  customer_address: string;
+  customer_po_no:   string;       // printed as Buyer's Order on invoice
+  delivery_date:    string;
+  delivery_address: string;       // if set + differs from customer_address → consignee fields
+  payment_terms:    string;
+  currency:         string;
+  exchange_rate:    number;
+  notes:            string;
+  status:           "draft" | "confirmed" | "closed";
+  show_sa_number:   boolean;
+  created_by:       number | null;
+  created_at:       string;
+  items?:           POItem[];
+}
 
-/** List row for invoice PO picker (customer-scoped). */
 export interface PurchaseOrderSummary {
   id:             number;
   po_number:      string;
   customer_po_no: string;
   po_date:        string;
-  status:         POStatus;
+  status:         PurchaseOrder["status"];
   currency:       string;
-}
-
-// ─── Customer Master ──────────────────────────────────────────────────────────
-
-export interface Customer {
-  id:                     number;
-  name:                   string;
-  address:                string;
-  country_of_destination: string;
-  port_of_discharge:      string;
-  final_destination:      string;
-  currency:               string;
-  pre_carriage_by:        string;
-  place_of_receipt:       string;
-  pre_carrier:            string;
-  port_of_loading:        string;
-  created_at:             string;
-}
-
-export type CustomerFormData = Omit<Customer, "id" | "created_at">;
-
-// ─── Users ────────────────────────────────────────────────────────────────────
-
-export interface User {
-  id:         number;
-  name:       string;
-  role:       UserRole;
-  is_active:  number;  // SQLite stores boolean as 0/1
-  created_at: string;
-}
-
-export interface UserWithHash extends User {
-  pin_hash: string;
 }
 ```
 
 ---
 
-### 2.3 Field-by-Field Validation Reference
-
-All validation is declared in `src/lib/schemas.ts` using Zod.
-
-#### Company Settings Fields
-
-| Field Name | Type | Required | Validation Rules |
-|---|---|---|---|
-| `name` | string | **Yes** | `min(1)` — "Company name is required" |
-| `address` | string | **Yes** | `min(1)` — "Address is required" |
-| `gstin` | string | No | No pattern enforced (free text) |
-| `pan` | string | No | No pattern enforced (free text) |
-| `iec` | string | No | No pattern enforced (free text) |
-| `bank_name` | string | No | — |
-| `bank_account` | string | No | — |
-| `ifsc` | string | No | — |
-| `swift` | string | No | — |
-| `bank_ad_code` | string | No | — |
-| `lut_arn_no` | string | No | — |
-| `lut_arn_date` | string | No | — |
-| `place` | string | No | — |
-| `signatory_name` | string | No | — |
-
-#### Invoice Header Fields
-
-| Field Name | Type | Required | Validation Rules |
-|---|---|---|---|
-| `invoice_number` | string | **Yes** | `min(1)` — "Invoice number is required" |
-| `invoice_date` | string | **Yes** | `min(1)` — "Date is required" |
-| `transport_mode` | enum | **Yes** | One of: `"BY SEA"`, `"BY AIR"`, `"BY ROAD"` |
-| `buyer_order_no` | string | No | — |
-| `duty_drawback` | string | No | — |
-| `hs_code` | string | No | — |
-| `other_references` | string | No | — |
-| `consignee_name` | string | **Yes** | `min(1)` — "Consignee name is required" |
-| `consignee_address` | string | **Yes** | `min(1)` — "Consignee address is required" |
-| `buyer_if_other` | string | No | — |
-| `country_of_origin` | string | No | Default `"INDIA"` |
-| `country_of_destination` | string | No | — |
-| `pre_carriage_by` | string | No | — |
-| `place_of_receipt` | string | No | — |
-| `pre_carrier` | string | No | — |
-| `vessel` | string | No | — |
-| `port_of_loading` | string | No | — |
-| `port_of_discharge` | string | No | — |
-| `final_destination` | string | No | — |
-| `terms_of_payment` | string | No | — |
-| `currency` | enum | **Yes** | One of: `"USD"`, `"EUR"`, `"GBP"`, `"AED"`, `"INR"` |
-| `exchange_rate` | number | **Yes** | `positive()` — must be > 0 |
-| `net_weight` | string | No | Free text |
-| `gross_weight` | string | No | Free text |
-| `notes` | string | No | — |
-| `status` | enum | **Yes** | One of: `"draft"`, `"final"` |
-| `purchase_order_id` | number \| null | No | Optional FK when invoice created from a PO |
-| `items` | array | **Yes** | `min(1)` — "At least one item is required" |
-
-#### Purchase Order Header Fields
-
-| Field Name | Type | Required | Validation Rules |
-|---|---|---|---|
-| `po_number` | string | **Yes** | Auto-generated internal ref (`PO/{seq}/{FY}`); read-only in UI |
-| `po_date` | string | **Yes** | `min(1)` — "PO date is required" |
-| `customer_id` | number | **Yes** | `int().positive()` — must select customer master |
-| `customer_name` | string | **Yes** | `min(1)` — denormalized snapshot at save |
-| `customer_address` | string | No | — |
-| `customer_po_no` | string | **Yes** | `min(1)` — "Customer PO number is required" (printed as Buyer's Order on invoice) |
-| `delivery_date` | string | No | PO expiry in UI |
-| `currency` | enum | **Yes** | `INR`, `USD`, `EUR`, `GBP`, `AED` |
-| `exchange_rate` | number | **Yes** | `positive()` |
-| `status` | enum | **Yes** | `draft`, `confirmed`, `closed` |
-| `items` | array | **Yes** | `min(1)` line items via `poItemSchema` |
-
-#### Invoice Line Item Fields
-
-| Field Name | Type | Required | Validation Rules |
-|---|---|---|---|
-| `sr_no` | number | **Yes** | `int().positive()` |
-| `marks_nos` | string | No | — |
-| `no_of_pkgs` | string | No | — |
-| `dimensions` | string | No | — |
-| `part_number` | string | No | — |
-| `description` | string | **Yes** | `min(1)` — "Description is required" |
-| `quantity` | number | **Yes** | `positive()` — "Quantity must be positive" |
-| `unit` | string | **Yes** | `min(1)` — "Unit is required" |
-| `unit_price` | number | **Yes** | `nonnegative()` — "Price cannot be negative" |
-| `total_amount` | number | **Yes** | `nonnegative()` — auto-computed, not user-entered |
-
-#### Zod Schema Definitions
+### 2.3 Zod Schemas (`src/lib/schemas.ts`)
 
 ```typescript
-// src/lib/schemas.ts
-
-import { z } from "zod";
-
-export const companySettingsSchema = z.object({
-  name:           z.string().min(1, "Company name is required"),
-  address:        z.string().min(1, "Address is required"),
-  gstin:          z.string(),
-  pan:            z.string(),
-  iec:            z.string(),
-  bank_name:      z.string(),
-  bank_account:   z.string(),
-  ifsc:           z.string(),
-  swift:          z.string(),
-  bank_ad_code:   z.string(),
-  lut_arn_no:     z.string(),
-  lut_arn_date:   z.string(),
-  place:          z.string(),
-  signatory_name: z.string(),
+export const packingListItemSchema = z.object({
+  sr_no:           z.number().int().positive(),
+  marks_nos:       z.string(),
+  no_of_pkgs:      z.string(),
+  dimensions:      z.string(),
+  dimensions_unit: z.string(),
+  net_weight:      z.string().optional(),
+  gross_weight:    z.string().optional(),
 });
 
 export const invoiceItemSchema = z.object({
-  sr_no:        z.number().int().positive(),
-  marks_nos:    z.string(),
-  no_of_pkgs:   z.string(),
-  dimensions:   z.string(),
-  part_number:  z.string(),
-  description:  z.string().min(1, "Description is required"),
-  quantity:     z.number().positive("Quantity must be positive"),
-  unit:         z.string().min(1, "Unit is required"),
-  unit_price:   z.number().nonnegative("Price cannot be negative"),
-  total_amount: z.number().nonnegative(),
+  sr_no:           z.number().int().positive(),
+  marks_nos:       z.string(),
+  no_of_pkgs:      z.string(),
+  dimensions:      z.string(),
+  dimensions_unit: z.string(),
+  part_number:     z.string(),
+  sa_number:       z.string(),
+  description:     z.string().min(1, "Description is required"),
+  quantity:        z.number().positive("Quantity must be positive"),
+  unit:            z.string().min(1, "Unit is required"),
+  unit_price:      z.number().nonnegative("Price cannot be negative"),
+  total_amount:    z.number().nonnegative(),
+  included:        z.boolean().optional(),
 });
 
 export const invoiceFormSchema = z.object({
   invoice_number:         z.string().min(1, "Invoice number is required"),
   invoice_date:           z.string().min(1, "Date is required"),
-  transport_mode:         z.enum(["BY SEA", "BY AIR", "BY ROAD"]),
+  transport_mode:         z.enum(["BY SEA", "BY AIR", "BY ROAD", "BY COURIER"]),
   buyer_order_no:         z.string(),
   duty_drawback:          z.string(),
   hs_code:                z.string(),
@@ -672,19 +518,23 @@ export const invoiceFormSchema = z.object({
   port_of_discharge:      z.string(),
   final_destination:      z.string(),
   terms_of_payment:       z.string(),
+  incoterm:               z.string(),
   currency:               z.enum(["USD", "EUR", "GBP", "AED", "INR"]),
   exchange_rate:          z.number().positive(),
   net_weight:             z.string(),
   gross_weight:           z.string(),
   notes:                  z.string(),
   status:                 z.enum(["draft", "final"]),
+  show_sa_number:         z.boolean().default(true),
   purchase_order_id:      z.number().int().nullable().optional(),
-  items: z.array(invoiceItemSchema).min(1, "At least one item is required"),
+  items:                  z.array(invoiceItemSchema).min(1, "At least one item is required"),
+  packing_list:           z.array(packingListItemSchema).default([]),
 });
 
 export const poItemSchema = z.object({
   sr_no:        z.number().int().positive(),
   part_number:  z.string(),
+  sa_number:    z.string(),
   description:  z.string().min(1, "Description is required"),
   quantity:     z.number().positive("Quantity must be positive"),
   unit:         z.string().min(1, "Unit is required"),
@@ -706,13 +556,10 @@ export const poFormSchema = z.object({
   exchange_rate:    z.number().positive(),
   notes:            z.string(),
   status:           z.enum(["draft", "confirmed", "closed"]),
+  show_sa_number:   z.boolean().default(true),
   created_by:       z.number().nullable(),
   items:            z.array(poItemSchema).min(1, "At least one line item is required"),
 });
-
-export type CompanySettingsFormValues = z.infer<typeof companySettingsSchema>;
-export type InvoiceFormSchema         = z.infer<typeof invoiceFormSchema>;
-export type POFormSchema              = z.infer<typeof poFormSchema>;
 ```
 
 ---
@@ -721,263 +568,207 @@ export type POFormSchema              = z.infer<typeof poFormSchema>;
 
 ### 3.1 Line Item Calculation
 
-Each line item's `total_amount` is **always computed** — it is never manually entered.
-
 ```
-Algorithm: Line Item Total
-─────────────────────────
-Input:  quantity    (number, > 0)
-        unit_price  (number, ≥ 0)
-
-Output: total_amount = quantity × unit_price
-
-Precision: JavaScript floating-point (IEEE 754 double)
-Rounding:  No explicit rounding; display uses toFixed(2)
-Trigger:   On every change to quantity or unit_price fields
-           via React Hook Form watch() + useEffect in LineItemsTable
+total_amount = Number((quantity * unit_price).toFixed(2))
 ```
 
-Implementation in `LineItemsTable/index.tsx`:
-
-```typescript
-// Pseudo-code representation
-const total_amount = Number((quantity * unit_price).toFixed(2));
-form.setValue(`items.${index}.total_amount`, total_amount);
-```
+Computed on every qty/price change via React Hook Form `watch()` + `useEffect`. Stored in DB; not recomputed on read.
 
 ### 3.2 Invoice Grand Total
 
-The invoice grand total is the **sum of all line item `total_amount` values**.
-
 ```
-Algorithm: Invoice Grand Total
-──────────────────────────────
-Input:  items[]  (array of InvoiceItem)
-
-total_quantity = Σ items[i].quantity        for all i
-total_amount   = Σ items[i].total_amount    for all i
-
-Notes:
-  - There is no separate freight/insurance/packaging field in the schema.
-    These charges are either embedded in unit_price or captured in notes.
-  - No discount or deduction fields exist at the invoice header level.
-  - The total is always expressed in the invoice's selected currency.
+total_qty    = Σ items[i].quantity
+total_amount = Σ items[i].total_amount
 ```
+
+No freight/insurance/discount fields. No IGST (LUT-only exports).
 
 ### 3.3 GST / Tax Logic — Export Under LUT
 
-This application is designed **exclusively for zero-rated exports**. The tax handling is:
-
-| Export Type | GST Treatment | Implementation |
-|---|---|---|
-| Export under LUT (Letter of Undertaking) | Zero-rated; no IGST charged | `lut_arn_no` and `lut_arn_date` stored and printed on invoice |
-| Export with payment of IGST | Not implemented | No IGST rate field exists in schema |
-
-**LUT Reference fields:**
-- `company_settings.lut_arn_no` — ARN number of the LUT
-- `company_settings.lut_arn_date` — Date LUT was filed
-
-The PDF declaration block prints: _"Export under LUT ARN: {lut_arn_no} dated {lut_arn_date}"_
-
-No IGST percentage, IGST amount, or GST computation exists anywhere in the codebase. All invoice totals represent the taxable value / FOB value only.
+Zero-rated exports only. No IGST computation. `lut_arn_no` and `lut_arn_date` are stored on `company_settings` and printed on all outputs as: `Export under LUT ARN: {lut_arn_no} dated {lut_arn_date}`.
 
 ### 3.4 Currency & Exchange Rate
 
-The invoice stores both the foreign currency amount and an exchange rate for INR conversion.
-
-```
-Algorithm: Currency Representation
-────────────────────────────────────
-invoice.currency      = selected foreign currency code (USD, EUR, GBP, AED, INR)
-invoice.exchange_rate = INR value per 1 unit of foreign currency
-                        (e.g., if 1 USD = 84 INR, exchange_rate = 84)
-
-All unit_price and total_amount values are stored in the invoice currency.
-
-INR equivalent (for internal reference only):
-  inr_equivalent = total_amount × exchange_rate
-
-Note: exchange_rate defaults to 1.0 for INR invoices.
-      The exchange_rate field is editable by the user at invoice creation time.
-      No live exchange rate API is integrated.
-```
+- All `unit_price`/`total_amount` stored in invoice currency.
+- `exchange_rate` = INR per 1 unit of foreign currency (e.g., 84 for USD).
+- `exchange_rate` forced to 1 when invoice currency is INR (applied in `mapPurchaseOrderToInvoiceFields`).
 
 ### 3.5 Invoice Number Generation
 
 ```
-Algorithm: Invoice Number
-──────────────────────────
-Input:  date  (Date object, defaults to today)
+Format:  EXP/{seq}/{fyLabel}   e.g. EXP/25/2025-26
 
-Step 1 — Determine fiscal year:
-  month   = date.getMonth() + 1   // 1–12
-  fyStart = (month >= 4) ? date.getFullYear() : date.getFullYear() - 1
-  fyEnd   = String(fyStart + 1).slice(-2)   // last 2 digits
-  fyLabel = `${fyStart}-${fyEnd}`           // e.g. "2025-26"
+Fiscal year:  April–March.
+  fyStart = (month >= 4) ? year : year - 1
+  fyLabel = `${fyStart}-${String(fyStart + 1).slice(-2)}`
 
-Step 2 — Get / increment sequence:
-  SELECT last_number FROM invoice_sequence WHERE year = fyStart
-  IF no row:
-    INSERT INTO invoice_sequence (year, last_number) VALUES (fyStart, 1)
-    seq = 1
-  ELSE:
-    UPDATE invoice_sequence SET last_number = last_number + 1 WHERE year = fyStart
-    seq = last_number + 1
-
-Step 3 — Format:
-  invoice_number = `EXP/${seq}/${fyLabel}`
-  // Examples: EXP/1/2025-26, EXP/25/2025-26, EXP/100/2025-26
-
-Notes:
-  - Sequence resets to 1 at the start of each fiscal year (April 1).
-  - April is month 4 → FY start = current year.
-  - March is month 3 → FY start = previous year.
+Sequence:
+  generateInvoiceNumber(date?)  → read-only preview (does NOT commit)
+  allocateInvoiceNumber(date)   → commits counter; called only inside createInvoice()
+  deleteInvoice()               → recalculates sequence from remaining rows using MAX(seq)
 ```
 
 ### 3.6 Purchase Order Number Generation
 
-Identical algorithm to invoice numbering, using `po_sequence` table and prefix `PO`:
-
 ```
-po_number = `PO/${seq}/${fyLabel}`
-// Examples: PO/1/2025-26, PO/7/2025-26
-```
+Format:  PO/{seq}/{fyLabel}   e.g. PO/7/2025-26
 
-**Do not confuse with `customer_po_no`:** the internal `po_number` is for app tracking and may appear in `other_references` as `Internal PO ref: {po_number}` when an invoice is loaded from a PO. The customer's document number lives in `customer_po_no` and maps to `invoices.buyer_order_no`.
-
-### 3.6a PO → Invoice Field Mapping
-
-Implemented in `src/lib/invoiceFromPo.ts` → `mapPurchaseOrderToInvoiceFields(po, customer?)`:
-
-| Source | Invoice field |
-|---|---|
-| `po.customer_po_no` | `buyer_order_no` |
-| `po.id` | `purchase_order_id` |
-| `po.customer_name` / `customer_address` | `consignee_name` / `consignee_address` |
-| `po.payment_terms`, `currency`, `exchange_rate`, `notes` | same names |
-| `po.po_number` | `other_references` → `Internal PO ref: {po_number}` |
-| `po.items[]` | `items[]` (marks/pkgs/dims blank; totals recomputed) |
-| `customer.*` shipping defaults | `country_of_destination`, ports, pre-carriage, etc. |
-
-Currency coercion: unknown PO currency defaults to `"USD"`; `exchange_rate` is forced to `1` when invoice currency is `INR`.
-
-### 3.6b PO Form Normalization
-
-`normalizePOFormValues(data)` in `usePurchaseOrders.ts` runs before every PO INSERT/UPDATE:
-
-- Trims `customer_po_no`, names, addresses, `payment_terms`, `notes`, line `part_number` / `description` / `unit`
-- Renumbers `sr_no` sequentially
-- Recomputes each line `total_amount = quantity × unit_price` (does not alter qty/price semantics)
-
-### 3.7 Amount in Words
-
-Used in PDF, HTML preview, and Excel. Implemented in `src/lib/invoiceDocument.ts` → `amountInWords()`.
-
-```
-Algorithm: amountInWords(amount: number, currency: string): string
-──────────────────────────────────────────────────────────────────
-Input:  amount    (number)  — total invoice amount in invoice currency
-        currency  (string)  — one of USD, EUR, GBP, AED, INR
-
-Step 1 — Split into major and minor units:
-  major = Math.floor(amount)
-  minor = Math.round((amount - major) * 100)
-
-Step 2 — Convert major and minor to words (English):
-  Uses ones[], teens[], tens[] word arrays
-  Handles: 0–999,999,999 range (ones, hundreds, thousands, lakhs, crores)
-  numberToWords(n) produces "FIVE THOUSAND THREE HUNDRED TWENTY"
-
-Step 3 — Append currency unit labels:
-  Currency unit map:
-    USD → major: "US DOLLAR",      minor: "CENTS"
-    EUR → major: "EURO",           minor: "CENTS"
-    GBP → major: "POUND STERLING", minor: "PENCE"
-    AED → major: "UAE DIRHAM",     minor: "FILS"
-    INR → major: "INDIAN RUPEE",   minor: "PAISE"
-
-Step 4 — Compose output:
-  IF minor === 0:
-    return `${words(major)} ${majorUnit} ONLY`
-  ELSE:
-    return `${words(major)} ${majorUnit} AND ${words(minor)} ${minorUnit} ONLY`
-
-Example:
-  amountInWords(5050.25, "USD")
-  → "FIVE THOUSAND AND FIFTY US DOLLAR AND TWENTY-FIVE CENTS ONLY"
+⚠ generatePONumber() commits the counter as a side effect (unlike generateInvoiceNumber).
 ```
 
-### 3.7a Invoice Display Dates
+### 3.7 PO → Invoice Field Mapping (`src/lib/invoiceFromPo.ts`)
 
-`formatInvoiceDisplayDate(iso)` in `invoiceDocument.ts` converts stored `YYYY-MM-DD` to `DD.MM.YYYY` for all printed/exported invoices.
+| Source | Invoice field | Notes |
+|---|---|---|
+| `po.customer_po_no` | `buyer_order_no` | |
+| `po.id` | `purchase_order_id` | |
+| `po.show_sa_number` | `show_sa_number` | |
+| `po.payment_terms` | `terms_of_payment` | |
+| `po.currency` | `currency` | unknown → coerced to "USD" |
+| `po.exchange_rate` | `exchange_rate` | forced to 1 when currency = INR |
+| `po.notes` | `notes` | |
+| `po.po_number` | `other_references` | formatted as `Internal PO ref: {po_number}` |
+| `po.items[]` | `items[]` | marks/pkgs/dims blank; `sa_number` transferred |
+| `customer.*` | shipping defaults | country, ports, pre-carriage fields |
 
-### 3.8 PIN Authentication
+**Delivery address → consignee logic:**
 
 ```
-Algorithm: PIN Hashing & Verification
-───────────────────────────────────────
-Storage:  SHA-256 hash of raw PIN string stored in users.pin_hash
-
-hashPin(pin: string): Promise<string>
-  bytes = new TextEncoder().encode(pin)
-  buffer = await crypto.subtle.digest("SHA-256", bytes)
-  return Array.from(new Uint8Array(buffer))
-         .map(b => b.toString(16).padStart(2, "0"))
-         .join("")   // lowercase hex string
-
-verifyPin(userId: number, pin: string): Promise<User | null>
-  candidate_hash = await hashPin(pin)
-  row = SELECT * FROM users WHERE id = userId AND pin_hash = candidate_hash AND is_active = 1
-  return row ?? null
-
-PIN Rules (UI validation):
-  - Minimum 4 digits
-  - Maximum 6 digits
-  - Digits only (pattern: /^\d{4,6}$/)
+if delivery_address.trim() !== "" AND delivery_address.trim() !== customer_address.trim():
+  consignee_name    = delivery_address.split("\n")[0].trim()
+  consignee_address = delivery_address
+  buyer_if_other    = customer_name + "\n" + customer_address
+else:
+  consignee_name    = customer_name
+  consignee_address = customer_address
+  buyer_if_other    = ""
 ```
+
+### 3.8 PO Form Normalization (`normalizePOFormValues`)
+
+Before every PO INSERT/UPDATE: trims `customer_po_no`, names, addresses, `payment_terms`, `notes`, line `part_number`/`sa_number`/`description`/`unit`; renumbers `sr_no` sequentially; recomputes `total_amount = quantity × unit_price`.
+
+### 3.9 Amount in Words (`amountInWords` in `invoiceDocument.ts`)
+
+Converts numeric total to English words. Currency unit map:
+
+| Currency | Major | Minor |
+|---|---|---|
+| USD | US DOLLAR | CENTS |
+| EUR | EURO | CENTS |
+| GBP | POUND STERLING | PENCE |
+| AED | UAE DIRHAM | FILS |
+| INR | INDIAN RUPEE | PAISE |
+
+Output format: `{major words} {MAJOR UNIT} [AND {minor words} {MINOR UNIT}] ONLY`
+
+### 3.10 Rate Column Label (`rateColumnLabel` in `invoiceDocument.ts`)
+
+```typescript
+rateColumnLabel(incoterm: string, currency: string): string
+// incoterm.trim() ? `${incoterm} ${currency}` : currency
+// e.g. "EXW USD", "FOB EUR", or just "USD"
+```
+
+### 3.11 Display Date Formatting
+
+`formatInvoiceDisplayDate(iso)`: `"YYYY-MM-DD"` → `"DD.MM.YYYY"`. Used on all printed/exported invoices.
+
+### 3.12 PIN Authentication
+
+SHA-256 hex digest stored in `users.pin_hash`. 4–6 digit PIN, digits only.
+
+`canEditInvoiceByStatus(role, status)` in `auth.ts`: controls Edit button visibility based on both role and invoice finalization state (finalized invoices are locked for non-admin).
 
 ---
 
 ## SECTION 4: STATE MANAGEMENT & UI WORKFLOW
 
-### 4.1 Authentication Flow
+### 4.1 Company Settings Hook (`useSettings`)
+
+Returns: `{ settings, loading, error, saveSettings, saveLogo, reload, companyLogo }`.
+
+- `saveSettings(data)`: Updates all text fields in `company_settings WHERE id=1`.
+- `saveLogo(base64)`: Updates `company_logo_base64` separately. Called immediately on file select.
+- `companyLogo`: Shorthand for `settings?.company_logo_base64 ?? ""`.
+
+### 4.2 Invoice Data Flow
 
 ```
-App Launch
-    │
-    ▼
-AuthProvider mounts
-    │
-    ├─ Check sessionStorage["auth_user"]
-    │     └─ Found → setCurrentUser(parsed user) → go to Dashboard
-    │
-    └─ Not found → check userCount()
-          ├─ 0 users → navigate to /setup-admin
-          └─ ≥ 1 users → navigate to /login
+getInvoice(id)
+  → SELECT * FROM invoices
+  → JSON.parse(invoice.packing_list)     ← packing list deserialized
+  → SELECT * FROM invoice_items ORDER BY sr_no
+  → returns Invoice with .items[] and .packing_list[]
 
-/setup-admin
-    User enters: name, PIN, confirm PIN
-    → createUser(name, pin, "admin")
-    → navigate to /login
+createInvoice(data, createdBy?)
+  → allocateInvoiceNumber()              ← commits sequence
+  → INSERT INTO invoices (incoterm, packing_list=JSON.stringify(...), ...)
+  → INSERT INTO invoice_items (dimensions_unit, sa_number, ...)
 
-/login
-    1. Combobox: select user from active users list
-    2. PIN pad: enter 4–6 digit PIN
-    3. verifyPin(userId, pin)
-       ├─ Match → login(user) → sessionStorage.setItem("auth_user", JSON.stringify(user))
-       │                      → navigate to /dashboard
-       └─ No match → shake animation + "Incorrect PIN" toast
+updateInvoice(id, data)
+  → UPDATE invoices SET incoterm, packing_list=JSON.stringify(...)
+  → DELETE + re-INSERT invoice_items
+  ⚠ Bug: sa_number omitted from item re-INSERT (items lose SA number on edit)
 
-logout()
-    → sessionStorage.removeItem("auth_user")
-    → navigate to /login
+deleteInvoice(id)
+  → DELETE FROM invoices
+  → Recalculates invoice_sequence.last_number from remaining rows
 ```
 
-### 4.2 Permission System
+### 4.3 Invoice Create/Edit Form (`InvoiceNew.tsx`)
+
+Single-page form (not a wizard). Sections: Customer & PO selector → Invoice header → Consignee → Shipping details → Financial details → Line items (LineItemsTable) → Packing list → Additional info (weights, notes).
+
+Key behaviors:
+- Customer combobox → loads PO list via `getPurchaseOrdersByCustomerId()`
+- PO select → calls `mapPurchaseOrderToInvoiceFields()` to pre-fill form
+- `editFormLoadedRef` prevents re-loading on customer list refresh during edit
+- `purchase_order_id` stored on invoice; never updates PO tables
+
+### 4.4 PDF Document Layout (`PdfDocument.tsx`)
+
+**Page:** A4 portrait, 24pt padding, 8pt Helvetica, 1pt solid black outer border.
+
+**Structure (top → bottom):**
+
+1. **Header row:** Logo cell (85pt, green tint, `company_logo_base64`) | "INVOICE CUM PACKING LIST" (centered) | transport mode cell (70pt)
+2. **Exporter | References:** Exporter block (name, address, GSTIN, IEC, PAN); right column: Invoice No & date (indigo highlight box) + `invoiceReferenceRows()` rows
+3. **Consignee+shipping | Buyer+countries+terms:** Left 50%: consignee, pre-carriage rows, vessel, discharge; Right 50%: buyer-if-other, origin/destination, terms of payment, incoterm
+4. **GOODS section:** Conditional SA Number column; `rateColumnLabel` sub-header; item rows; TOTAL row with highlighted amount cell
+5. **Amount in words row**
+6. **PACKING LIST section:** Sr | Marks & Nos | No of Pkgs | Dimensions | Unit; footer: Net/Gross weight
+7. **Declaration + signature:** LUT line (if set), place, date, signatory block
+
+Column widths in GOODS (with `show_sa_number = true`): Sr 5% | SA# 10% | Part 14% | Desc 38% | Qty 10% | Rate 11% | Amt 12%. Without SA#: Sr 6% | Part 16% | Desc 42% | Qty 10% | Rate 13% | Amt 13%.
+
+### 4.5 Excel Export Layout (`excel.ts`)
+
+Built as `aoa_to_sheet` (rows array) mirroring the PDF grid:
+
+- **Logo:** 3 reserved blank rows at top (`!rows` height set; `!images` wired for SheetJS Pro, silently ignored by CE)
+- Transport mode | blank | INVOICE CUM PACKING LIST
+- Invoice No + Date header row
+- Exporter block interleaved with `invoiceReferenceRows()` label/value pairs
+- Consignee + buyer; shipping rows (pre-carriage, vessel, discharge, destination, terms)
+- **GOODS:** header + `NOS` / `rateColumnLabel` sub-row; item rows (sr, part, description, qty, rate, amount); TOTAL row
+- `(IN WORDS)` row
+- **PACKING LIST:** header; item rows (sr, marks, pkgs, dimensions, dimensions_unit); net/gross weight row
+- Declaration; LUT line; place/date; signatory
+
+Column widths: `[6, 22, 36, 12, 18, 18]` wch.
+
+### 4.6 Settings Page (`Settings.tsx`)
+
+Single page, no tabs. Four cards:
+1. **Exporter Information** — name, address, GSTIN, PAN, IEC
+2. **Banking & Export Details** — bank name/account, IFSC, SWIFT, AD code, LUT ARN no/date
+3. **Signatory Details** — place, signatory name
+4. **Company Logo** — file upload (`image/*`, ≤2 MB); stored as base64 data-URL via `saveLogo()` immediately on selection; shows preview + remove button if set
+
+### 4.7 Permission System
 
 ```typescript
-// src/lib/auth.ts
-
 export const PERMISSIONS = {
   view_invoices:    ["admin", "operator", "viewer"],
   export_invoice:   ["admin", "operator", "viewer"],
@@ -987,431 +778,78 @@ export const PERMISSIONS = {
   delete_invoice:   ["admin"],
   access_settings:  ["admin"],
   manage_users:     ["admin"],
-} as const;
-
-export type Permission = keyof typeof PERMISSIONS;
-
-export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return (PERMISSIONS[permission] as readonly string[]).includes(role);
-}
+};
 ```
 
-`PermissionGuard` component wraps protected routes:
+`canEditInvoiceByStatus(role, status)` additionally locks editing of finalized invoices for non-admin roles.
 
-```tsx
-// Renders children only if currentUser has the required permission
-// Otherwise redirects to /dashboard
-<PermissionGuard permission="finalize_invoice">
-  <FinalizeButton />
-</PermissionGuard>
-```
-
-`AuthContext.can(permission)` is the hook-based equivalent:
-
-```tsx
-const { can } = useAuth();
-if (can("delete_invoice")) { /* show delete button */ }
-```
-
-### 4.3 Invoice Creation Workflow
-
-```
-Route: /invoices/new and /invoices/:id/edit  (InvoiceNew.tsx)
-────────────────────────────────────────────────────────────
-Single-page form (NOT a multi-step wizard)
-
-State:
-  - React Hook Form + invoiceFormSchema
-  - LineItemsTable (qty editable; totals recalc on invoice only)
-  - Customer combobox + PO select filtered by customer_id
-  - purchase_order_id saved on invoice row (never updates PO tables)
-
-Step 0 — Customer & Purchase Order
-  ┌─────────────────────────────────────────────────────┐
-  │ Customer → getPurchaseOrdersByCustomerId()        │
-  │ PO select → mapPurchaseOrderToInvoiceFields()       │
-  │ buyer_order_no ← customer_po_no (PDF/Excel preview) │
-  │ Edit: invoice loaded once; pickers sync after       │
-  │       customers load; PO restored via purchase_     │
-  │       order_id                                      │
-  └─────────────────────────────────────────────────────┘
-
-Step 1 — Invoice Header
-  ┌─────────────────────────────────────────────────────┐
-  │ Invoice Number / Date / Transport Mode              │
-  │ Buyer's Order No / Duty Drawback / HS Code          │
-  │ Other References (may include internal PO ref)      │
-  └─────────────────────────────────────────────────────┘
-
-Step 2 — Consignee (editable after PO load)
-  ┌─────────────────────────────────────────────────────┐
-  │ Consignee Name / Address / Buyer if Other           │
-  └─────────────────────────────────────────────────────┘
-
-Step 3 — Shipping Details
-  ┌─────────────────────────────────────────────────────┐
-  │ Country of Origin / Country of Destination         │
-  │ Pre-carriage By / Place of Receipt / Pre-carrier    │
-  │ Vessel / Port of Loading / Port of Discharge        │
-  │ Final Destination                                   │
-  └─────────────────────────────────────────────────────┘
-
-Step 4 — Financial Details
-  ┌─────────────────────────────────────────────────────┐
-  │ Terms of Payment                                    │
-  │ Currency (select)                                   │
-  │ Exchange Rate                                       │
-  └─────────────────────────────────────────────────────┘
-
-Step 5 — Line Items (LineItemsTable component)
-  ┌─────────────────────────────────────────────────────┐
-  │ Dynamic table; Add/Remove rows                      │
-  │ Each row: Sr No │ Marks │ Pkgs │ Dims │ Part No    │
-  │           Description │ Qty │ Unit │ Price │ Total  │
-  │ Total auto-computed on qty/price change             │
-  │ Grand Total shown below table                       │
-  └─────────────────────────────────────────────────────┘
-
-Step 6 — Additional Info
-  ┌─────────────────────────────────────────────────────┐
-  │ Net Weight / Gross Weight                           │
-  │ Notes (textarea)                                    │
-  └─────────────────────────────────────────────────────┘
-
-Submission Buttons:
-  [Save Draft]    → status = "draft"  → createInvoice() → navigate to /invoices/:id
-  [Save & Final]  → requires can("finalize_invoice")
-                  → status = "final"  → createInvoice() → navigate to /invoices/:id
-
-Validation trigger: on form submit (handleSubmit)
-Error display: below each field, text-xs text-destructive
-```
-
-### 4.4 Invoice Detail & Actions Workflow
-
-```
-Route: /invoices/:id  (InvoiceDetail.tsx)
-─────────────────────────────────────────────────────
-Loads: invoice + items from DB
-
-Actions available (by role):
-  ┌──────────────────────────┬───────────────────────┐
-  │ Action                   │ Required Permission   │
-  ├──────────────────────────┼───────────────────────┤
-  │ Export PDF               │ export_invoice        │
-  │ Export Excel             │ export_invoice        │
-  │ Edit (→ /invoices/:id/edit) │ edit_invoice      │
-  │ Finalize                 │ finalize_invoice      │
-  │ Delete                   │ delete_invoice        │
-  └──────────────────────────┴───────────────────────┘
-
-Finalize flow:
-  → confirm dialog
-  → finalizeInvoice(id, currentUser.id)
-  → status becomes "final"
-  → Edit and Delete buttons hidden for non-admin on finalized invoices
-```
-
-### 4.5 Purchase Order Workflow
-
-```
-/purchase-orders/new  (PurchaseOrderNew.tsx)
-─────────────────────────────────────────────────────
-  - Customer combobox → sets customer_id + name/address; loads currency default
-  - Customer PO Details: customer_po_no, po_date, expiry (delivery_date),
-    payment_terms, currency; internal po_number auto-generated (read-only)
-  - Line items: part_number, description, qty, unit, unit_price
-  - Validated with poFormSchema; saved via createPurchaseOrder()
-
-/purchase-orders/:id  (PurchaseOrderDetail.tsx)
-  [Confirm PO]  → status = "confirmed"
-  [Close PO]    → status = "closed"
-  [Edit]        → draft only
-  [Delete]      → admin
-  (No PO PDF/Excel export in current codebase)
-```
-
-### 4.6 End-to-End Scenario (Customer → PO → Invoice)
-
-```
-1. Customer Management (/customers)
-   createCustomer() → customers row
-
-2. Purchase Orders (/purchase-orders/new) — repeat per customer PO received
-   Select customer master → customer_id + denormalized name/address
-   Enter customer_po_no, dates, terms, currency, line items
-   createPurchaseOrder() → purchase_orders + purchase_order_items
-
-3. Export Invoice (/invoices/new)
-   Select same customer → getPurchaseOrdersByCustomerId(customer_id)
-   Select PO → mapPurchaseOrderToInvoiceFields(); save
-   createInvoice() stores invoice + invoice_items + purchase_order_id
-   Editing invoice qty updates invoice_items only (PO quantities unchanged)
-
-4. Outputs
-   buyer_order_no on invoice = customer PO number
-   InvoicePreview + PdfDocument + excel.ts label "Buyer's Order No."
-```
-
-### 4.7 Customer Management Workflow
-
-```
-/customers  (CustomerManagement.tsx)
-─────────────────────────────────────────────────────
-Table listing all customers with search filter.
-
-Inline panel (right side) for Add / Edit:
-  Fields:
-    - Name (required)
-    - Address (textarea)
-    - Country of Destination
-    - Currency
-    - Port of Discharge
-    - Final Destination
-    - Pre-carriage By
-    - Place of Receipt
-    - Pre-carrier (carrier name)
-    - Port of Loading
-
-  [Save]    → createCustomer() or updateCustomer()
-  [Cancel]  → close panel
-  [Delete]  → deleteCustomer() (with confirmation)
-```
-
-### 4.8 Settings Workflow
-
-```
-/settings  (Settings.tsx)  — admin only
-─────────────────────────────────────────────────────
-Loads: company_settings row (id=1)
-
-Tab: Company Info
-  Fields: name, address, gstin, pan, iec
-  
-Tab: Bank Details
-  Fields: bank_name, bank_account, ifsc, swift, bank_ad_code
-
-Tab: Export Details
-  Fields: lut_arn_no, lut_arn_date, place, signatory_name
-
-[Save Settings]  → saveSettings(data)
-  → UPDATE company_settings SET ... WHERE id=1
-  → toast.success("Settings saved")
-```
-
-### 4.9 Error Handling Patterns
+### 4.8 Error Handling Patterns
 
 | Scenario | Handling |
 |---|---|
-| Form validation failure | Zod errors displayed inline below each field; submit blocked |
-| DB query failure | `catch(e)` → `toast.error(\`Error: ${e}\`)` |
-| PIN mismatch | Shake animation on PIN input + toast error |
-| Empty list states | "No invoices found" placeholder text in list views |
-| Loading states | Boolean `isLoading` → spinner / "Loading..." text |
-| Navigation guard | `PermissionGuard` redirects to /dashboard silently |
+| Form validation failure | Zod errors inline below each field; submit blocked |
+| DB query failure | `catch(e)` → `toast.error(String(e))` |
+| PIN mismatch | Shake animation + toast error |
+| Logo too large | `toast.error("Image must be under 2 MB")` |
+| Empty list states | Placeholder text |
+| Loading states | `isLoading` → spinner / "Loading..." text |
+| Permission denied | `PermissionGuard` redirects to /dashboard |
 
 ---
 
 ## SECTION 5: OUTPUT & EXPORT SPECIFICATIONS
 
-### 5.0 Shared Invoice Document Utilities (`invoiceDocument.ts`)
+### 5.1 Shared Document Utilities (`invoiceDocument.ts`)
 
-All three output paths (screen preview, PDF, Excel) import from `src/lib/invoiceDocument.ts`:
-
-| Export | Purpose |
-|---|---|
-| `formatInvoiceDisplayDate(iso)` | `YYYY-MM-DD` → `DD.MM.YYYY` on printed dates |
-| `invoiceReferenceRows(invoice, company)` | Ordered right-column refs: Invoice No & date, Buyer's Order No., Duty Drawback, Bank AD Code, HS Code, LUT ARN, Other Reference(s) |
-| `fmtAmount(n, decimals?)` | Thousands-separated amounts (`en-US`, 2 dp default) |
-| `amountInWords(amount, currency)` | Footer legal text (see §3.7) |
-
-**Rate column label (all formats):** `EX WORK {invoice.currency}` on quantity/rate header row.
-
-**HTML preview:** `src/components/InvoicePreview/index.tsx` — mirrors PDF grid with Tailwind `border-black`.
-
----
-
-### 5.1 PDF Generation Engine
-
-**Library:** `@react-pdf/renderer`  
-**Entry point:** `src/lib/pdf.ts` → `exportInvoicePdf(invoice, company)`  
-**Component:** `src/components/InvoicePreview/PdfDocument.tsx` (uses `invoiceReferenceRows`, `formatInvoiceDisplayDate`, `amountInWords`, `fmtAmount`)
-
-#### Export Flow
-
-```
-exportInvoicePdf(invoice: Invoice, company: CompanySettings): Promise<void>
-──────────────────────────────────────────────────────────────────────────
-1. Call dialog.save({ filters: [{ name: "PDF", extensions: ["pdf"] }] })
-   → User selects save path
-   → If user cancels → return early
-
-2. blob = await pdf(<InvoicePdfDocument invoice={invoice} company={company} />).toBlob()
-
-3. arrayBuffer = await blob.arrayBuffer()
-   uint8Array  = new Uint8Array(arrayBuffer)
-
-4. await fs.writeFile(path, uint8Array)
-
-5. toast.success("PDF exported successfully")
-```
-
-#### PDF Document Layout (`InvoicePdfDocument`)
-
-**Page setup:** A4 portrait, 24pt page padding, 8pt Helvetica, **1pt solid black** outer border (`s.outer`).
-
-**Structure (top to bottom):**
-
-1. **Title row** — transport mode (narrow left) + centered **INVOICE CUM PACKING LIST**
-2. **Exporter | references** — exporter block (name, address, GSTIN, IEC, PAN); right column from `invoiceReferenceRows()` via `RefRow`
-3. **Consignee + shipping (50%) | Buyer + countries + terms (50%)** — left: consignee, then `ShipCell` rows (pre-carriage, pre-carrier, vessel/loading, discharge/final destination); right: buyer-if-other, origin/destination split, terms of payment
-4. **Line table** — columns ~10% / 12% / 38% / 10% / 15% / 15%; sub-header row `NOS` | `EX WORK {currency}`; lines show marks+dims, pkgs, description+part no, qty, rate, amount
-5. **Totals row** — optional net/gross weight left; **TOTAL** qty and amount right
-6. **Amount in words** — `(IN WORDS)` + `amountInWords`; right cell **TOTAL {currency}** + formatted sum
-7. **Footer** — declaration + optional LUT line (left); place, date (`formatInvoiceDisplayDate`), signatory block (right). Bank block removed from PDF (bank details are company settings only; not rendered in current layout).
-
-#### PDF Style Constants
-
-```typescript
-const s = StyleSheet.create({
-  page:        { padding: 24, fontSize: 8, fontFamily: "Helvetica" },
-  outer:       { border: "1pt solid #000" },
-  bold:        { fontFamily: "Helvetica-Bold" },
-  borderB:     { borderBottom: "1pt solid #000" },
-  borderR:     { borderRight: "1pt solid #000" },
-  label:       { fontSize: 7, color: "#333" },
-});
-```
-
----
-
-### 5.2 Excel Generation Engine
-
-**Library:** `xlsx` (SheetJS Community Edition)  
-**Entry point:** `src/lib/excel.ts` → `exportInvoiceExcel(invoice, company)`  
-**Shared helpers:** `invoiceReferenceRows`, `formatInvoiceDisplayDate`, `amountInWords` from `invoiceDocument.ts`
-
-#### Export Flow
-
-```
-exportInvoiceExcel(invoice: Invoice, company: CompanySettings): Promise<void>
-──────────────────────────────────────────────────────────────────────────────
-1. Build 2D array (rows[]) of cell values (see layout below)
-
-2. wb = XLSX.utils.book_new()
-   ws = XLSX.utils.aoa_to_sheet(rows)
-
-3. Apply column widths:
-   ws["!cols"] = [
-     { wch: 20 },  // Marks & Nos
-     { wch: 12 },  // No of Pkgs
-     { wch: 30 },  // Description
-     { wch: 10 },  // Quantity
-     { wch: 16 },  // Rate
-     { wch: 16 },  // Amount
-   ]
-
-4. XLSX.utils.book_append_sheet(wb, ws, "Invoice")
-   xlsxData = XLSX.write(wb, { bookType: "xlsx", type: "array" })
-
-5. path = await dialog.save({ filters: [{ name: "Excel", extensions: ["xlsx"] }] })
-   IF user cancels → return
-
-6. await fs.writeFile(path, new Uint8Array(xlsxData))
-   toast.success("Excel exported successfully")
-```
-
-#### Excel Sheet Layout
-
-Built as `aoa_to_sheet` rows aligned with the PDF/HTML grid (not the older simplified 6-column export):
-
-- Row 1: transport mode | blank | **INVOICE CUM PACKING LIST**
-- Exporter block paired with `invoiceReferenceRows()` labels/values (GSTIN/IEC/PAN rows as needed)
-- Consignee + buyer header; shipping rows with origin/destination and terms in same positions as preview
-- Table header + `NOS` / `EX WORK {currency}` sub-row; item rows with marks/dims, pkgs, description+part no
-- Optional net/gross weight row; **TOTAL** qty/amount
-- `(IN WORDS)` row + **TOTAL {currency}** column
-- Declaration + LUT line; place/date/signatory columns (no separate bank block in sheet)
-
----
-
-### 5.3 Database Migration Sequence
-
-Migrations are defined as Rust string literals in `src-tauri/src/db/schema.rs` and run via `tauri-plugin-sql` at startup:
-
-| # | Migration Name | What it Creates |
+| Export | Signature | Purpose |
 |---|---|---|
-| 1 | `create_company_settings` | `company_settings` table + initial row |
+| `formatInvoiceDisplayDate` | `(iso: string) → string` | `YYYY-MM-DD` → `DD.MM.YYYY` |
+| `invoiceReferenceRows` | `(invoice, company) → LabelValueRow[]` | Ordered right-column refs |
+| `rateColumnLabel` | `(incoterm, currency) → string` | Rate column header |
+| `fmtAmount` | `(n, decimals=2) → string` | `en-US` locale, 2dp default |
+| `amountInWords` | `(amount, currency) → string` | Legal footer text |
+
+`invoiceReferenceRows` order: Invoice No & date, Buyer's Order No., DUTY DRAWBACK UNDER, BANK AD CODE, HS CODE, LUT ARN NO.
+
+### 5.2 Database Migration Sequence
+
+| # | Description | What it adds |
+|---|---|---|
+| 1 | `create_company_settings` | `company_settings` table + row 1 |
 | 2 | `create_invoices` | `invoices` table |
-| 3 | `create_invoice_items` | `invoice_items` table + index |
-| 4 | `create_invoice_sequence` | `invoice_sequence` table |
-| 5 | `create_users` | `users` table |
-| 6 | `add_created_by_to_invoices` | Adds `created_by`, `finalized_by` columns to `invoices` |
-| 7 | `create_customers` | `customers` table (with redundant supplier-like columns) |
-| 8 | `simplify_customers` | Drops unused columns from `customers` (via recreate) |
+| 3 | `create_invoice_items` | `invoice_items` + index |
+| 4 | `create_invoice_sequence` | `invoice_sequence` |
+| 5 | `create_users` | `users` |
+| 6 | `add_created_by_to_invoices` | `created_by`, `finalized_by` on invoices |
+| 7 | `create_customers` | `customers` |
+| 8 | `simplify_customers` | Drops `buyer_if_other`, `terms_of_payment`, `transport_mode` from customers |
 | 9 | `create_purchase_order_module` | `suppliers`, `purchase_orders`, `purchase_order_items`, `po_sequence` |
-| 10 | `po_replace_supplier_with_customer` | Drops `supplier_id` from POs; adds `customer_id`, `customer_name`, `customer_address` |
-| 11 | `add_purchase_order_id_to_invoices` | Adds `invoices.purchase_order_id` FK → `purchase_orders` (used by invoice create/edit PO picker) |
-| 12 | `add_customer_po_no_to_purchase_orders` | Adds `purchase_orders.customer_po_no` (customer document PO number → invoice `buyer_order_no`) |
+| 10 | `po_replace_supplier_with_customer` | Drops supplier cols; adds `customer_id`, `customer_name`, `customer_address` |
+| 11 | `add_purchase_order_id_to_invoices` | `invoices.purchase_order_id` FK |
+| 12 | `add_customer_po_no_to_purchase_orders` | `purchase_orders.customer_po_no` |
+| 13 | `add_incoterm_to_invoices` | `invoices.incoterm` |
+| 14 | `add_dimensions_unit_to_invoice_items` | `invoice_items.dimensions_unit` |
+| 15 | `add_sa_number_to_item_tables` | `sa_number` on `purchase_order_items` and `invoice_items` |
+| 16 | `add_show_sa_number_to_orders_and_invoices` | `show_sa_number BOOLEAN DEFAULT TRUE` on both |
+| 17 | `add_packing_list_to_invoices` | `invoices.packing_list TEXT DEFAULT '[]'` |
+| 18 | `add_company_logo_to_settings` | `company_settings.company_logo_base64 TEXT DEFAULT ''` |
 
-Database file path: `sqlite:export_invoice.db` (stored in Tauri app data directory)
-
----
-
-### 5.4 Tauri Configuration
-
-**`src-tauri/tauri.conf.json`:**
+### 5.3 Tauri Configuration
 
 ```json
 {
   "productName": "Export Invoice",
   "version": "0.1.0",
   "identifier": "com.exportinvoice.app",
-  "build": {
-    "frontendDist": "../dist"
-  },
   "app": {
-    "windows": [{
-      "title": "Export Invoice",
-      "width": 1280,
-      "height": 800,
-      "resizable": true
-    }],
-    "security": {
-      "csp": null
-    }
+    "windows": [{ "title": "Export Invoice", "width": 1280, "height": 800, "resizable": true }],
+    "security": { "csp": null }
   },
-  "bundle": {
-    "active": true,
-    "targets": ["msi", "nsis"]
-  }
+  "bundle": { "active": true, "targets": ["msi", "nsis"] }
 }
 ```
 
-**`src-tauri/Cargo.toml` dependencies (key):**
-
-```toml
-[dependencies]
-tauri              = { version = "2", features = [] }
-tauri-plugin-sql   = { version = "2.4.0", features = ["sqlite"] }
-tauri-plugin-fs    = "2.5.1"
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-opener = "2"
-serde              = { version = "1", features = ["derive"] }
-serde_json         = "1"
-```
-
-**`vite.config.ts`:**
-
-```typescript
-export default defineConfig({
-  plugins: [react()],
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
-  optimizeDeps: { include: ["@react-pdf/renderer", "xlsx"] },
-  build: { target: "esnext" },
-  server: { port: 1420, strictPort: true },
-});
-```
+Database: `sqlite:export_invoice.db` in Tauri app data directory.
 
 ---
 
@@ -1419,13 +857,15 @@ export default defineConfig({
 
 | Limitation | Impact |
 |---|---|
-| No IGST computation | Application is LUT-only; IGST-paid exports require manual workaround |
-| No live exchange rate | Exchange rate must be entered manually per invoice |
-| No freight/insurance line | Must be embedded in unit prices or captured in notes |
-| No digital signature on PDF | PDF is unsigned; requires physical wet signature |
-| No audit log | Only `created_by` / `finalized_by` tracked; no field-level change history |
-| No cloud sync | Single-device SQLite; no backup or multi-user concurrent access |
-| No batch export | Invoices must be exported one at a time |
-| No advanced list filtering | Text search only; no date range or status filter in list views |
-| PIN auth only | No 2FA, no password complexity enforcement beyond 4–6 digit length |
-| Last-write-wins | No optimistic locking for concurrent edits (single-user by design) |
+| No IGST computation | LUT-only; IGST-paid exports require manual workaround |
+| No live exchange rate | Entered manually per invoice |
+| No freight/insurance line | Embedded in unit prices or notes |
+| No digital signature on PDF | Physical wet signature required |
+| No audit log | Only `created_by` / `finalized_by` tracked |
+| No cloud sync | Single-device SQLite |
+| No batch export | One invoice at a time |
+| No advanced list filtering | Text search only |
+| PIN auth only | No 2FA; 4–6 digit length only |
+| SheetJS CE image limitation | Logo reserved rows work; `!images` silently ignored (Pro feature) |
+| `sa_number` lost on invoice edit | `updateInvoice` omits it from item re-INSERT |
+| `show_sa_number` not persisted on PO | `createPurchaseOrder`/`updatePurchaseOrder` do not write the flag |

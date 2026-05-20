@@ -16,7 +16,7 @@ import type { Invoice } from "@/lib/types";
 export function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { settings } = useSettings();
+  const { settings, companyLogo } = useSettings();
   const { currentUser, can } = useAuth();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +55,7 @@ export function InvoiceDetail() {
   async function handlePdf() {
     if (!invoice || !settings) return;
     try {
-      await exportInvoicePdf(invoice, settings);
+      await exportInvoicePdf(invoiceWithLogo, settings);
       toast.success("PDF exported");
     } catch (e) {
       toast.error(`PDF export failed: ${e}`);
@@ -65,7 +65,7 @@ export function InvoiceDetail() {
   async function handleExcel() {
     if (!invoice || !settings) return;
     try {
-      await exportInvoiceExcel(invoice, settings);
+      await exportInvoiceExcel(invoiceWithLogo, settings);
       toast.success("Excel exported");
     } catch (e) {
       toast.error(`Excel export failed: ${e}`);
@@ -79,6 +79,8 @@ export function InvoiceDetail() {
   if (!invoice) {
     return <div className="p-6 text-destructive">Invoice not found.</div>;
   }
+
+  const invoiceWithLogo: Invoice = { ...invoice, company_logo_base64: companyLogo };
 
   const isFinal = invoice.status === "final";
   const canEdit =
@@ -143,7 +145,7 @@ export function InvoiceDetail() {
       {/* Invoice Preview */}
       {settings && (
         <div className="max-w-4xl mx-auto">
-          <InvoicePreview invoice={invoice} company={settings} />
+          <InvoicePreview invoice={invoiceWithLogo} company={settings} />
         </div>
       )}
     </div>

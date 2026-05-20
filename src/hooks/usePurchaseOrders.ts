@@ -34,6 +34,9 @@ export interface PurchaseOrder {
   customer_po_no: string;
   delivery_date: string;
   delivery_address: string;
+  // PO-level delivery override for invoices; falls back to buyer if empty.
+  port_of_discharge: string;
+  final_destination: string;
   payment_terms: string;
   currency: string;
   exchange_rate: number;
@@ -167,15 +170,18 @@ export async function createPurchaseOrder(
   const payload = normalizePOFormValues(data);
   const db = await getDb();
   const result = await db.execute(
+    // port_of_discharge + final_destination added in migration 19.
     `INSERT INTO purchase_orders (
       po_number, po_date, customer_id, customer_name, customer_address,
-      customer_po_no, delivery_date, delivery_address, payment_terms,
-      currency, exchange_rate, notes, status, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      customer_po_no, delivery_date, delivery_address,
+      port_of_discharge, final_destination,
+      payment_terms, currency, exchange_rate, notes, status, created_by
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
       payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
       payload.customer_address, payload.customer_po_no, payload.delivery_date,
-      payload.delivery_address, payload.payment_terms, payload.currency,
+      payload.delivery_address, payload.port_of_discharge, payload.final_destination,
+      payload.payment_terms, payload.currency,
       payload.exchange_rate, payload.notes, payload.status, createdBy ?? null,
     ]
   );
@@ -199,16 +205,19 @@ export async function updatePurchaseOrder(
   const payload = normalizePOFormValues(data);
   const db = await getDb();
   await db.execute(
+    // port_of_discharge + final_destination added in migration 19.
     `UPDATE purchase_orders SET
       po_number=$1, po_date=$2, customer_id=$3, customer_name=$4,
       customer_address=$5, customer_po_no=$6, delivery_date=$7,
-      delivery_address=$8, payment_terms=$9, currency=$10,
-      exchange_rate=$11, notes=$12, status=$13, updated_at=datetime('now')
-    WHERE id=$14`,
+      delivery_address=$8, port_of_discharge=$9, final_destination=$10,
+      payment_terms=$11, currency=$12,
+      exchange_rate=$13, notes=$14, status=$15, updated_at=datetime('now')
+    WHERE id=$16`,
     [
       payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
       payload.customer_address, payload.customer_po_no, payload.delivery_date,
-      payload.delivery_address, payload.payment_terms, payload.currency,
+      payload.delivery_address, payload.port_of_discharge, payload.final_destination,
+      payload.payment_terms, payload.currency,
       payload.exchange_rate, payload.notes, payload.status, id,
     ]
   );

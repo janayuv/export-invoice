@@ -273,7 +273,6 @@ export function InvoiceNew() {
 
     setValue("consignee_name", c.name);
     setValue("consignee_address", c.address);
-    setValue("country_of_destination", c.country_of_destination);
     setValue("port_of_discharge", c.port_of_discharge);
     setValue("final_destination", c.final_destination);
     setValue("currency", c.currency as InvoiceFormSchema["currency"]);
@@ -298,6 +297,12 @@ export function InvoiceNew() {
     if (!poId || poId === PO_SELECT_NONE) {
       setSelectedPoId("");
       clearPoDerivedFields();
+      // Revert PO shipping overrides to customer defaults so no stale values remain.
+      const c = customers.find((cu) => String(cu.id) === selectedCustomerId);
+      if (c) {
+        setValue("port_of_discharge", c.port_of_discharge);
+        setValue("final_destination", c.final_destination);
+      }
       return;
     }
 
@@ -339,6 +344,9 @@ export function InvoiceNew() {
         status: current.status,
         items: mapped.items ?? current.items,
       });
+      setValue("port_of_discharge", mapped.port_of_discharge || '', { shouldDirty: true, shouldTouch: true });
+      setValue("final_destination", mapped.final_destination || '', { shouldDirty: true, shouldTouch: true });
+      // Force PO-level delivery override (BUSAN / SOUTH KOREA) to take priority over buyer/consignee defaults
       setSelectedPoId(poId);
       toast.success("Loaded invoice fields from purchase order");
     } catch (e) {
@@ -454,9 +462,7 @@ export function InvoiceNew() {
                   options={customers.map((c) => ({
                     value: String(c.id),
                     label: c.name,
-                    sublabel: [c.country_of_destination, c.currency]
-                      .filter(Boolean)
-                      .join(" · "),
+                    sublabel: c.currency,
                   }))}
                 />
               </div>
@@ -598,9 +604,6 @@ export function InvoiceNew() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Country of Origin" error={errors.country_of_origin?.message}>
               <Input {...register("country_of_origin")} defaultValue="INDIA" />
-            </Field>
-            <Field label="Country of Final Destination" error={errors.country_of_destination?.message}>
-              <Input {...register("country_of_destination")} placeholder="KOREA" />
             </Field>
             <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
               <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" />

@@ -57,5 +57,16 @@ export function useSettings() {
     await load();
   }
 
-  return { settings, loading, error, saveSettings, reload: load };
+  async function saveLogo(base64: string) {
+    const db = await getDb();
+    await db.execute(
+      `UPDATE company_settings SET company_logo_base64=$1, updated_at=datetime('now') WHERE id=1`,
+      [base64]
+    );
+    await load();
+  }
+
+  const companyLogo = settings?.company_logo_base64 ?? "";
+
+  return { settings, loading, error, saveSettings, saveLogo, reload: load, companyLogo };
 }

@@ -48,7 +48,7 @@ export const invoiceItemSchema = z.object({
 export const invoiceFormSchema = z.object({
   invoice_number: z.string().min(1, "Invoice number is required"),
   invoice_date: z.string().min(1, "Date is required"),
-  transport_mode: z.enum(["BY SEA", "BY AIR", "BY ROAD"]),
+  transport_mode: z.enum(["BY SEA", "BY AIR", "BY ROAD", "BY COURIER"]),
   buyer_order_no: z.string(),
   duty_drawback: z.string(),
   hs_code: z.string(),
@@ -106,6 +106,9 @@ export const poFormSchema = z.object({
   customer_po_no: z.string().min(1, "Customer PO number is required"),
   delivery_date: z.string(),
   delivery_address: z.string(),
+  // PO-level overrides for invoice shipping fields (migration 19).
+  port_of_discharge: z.string(),
+  final_destination: z.string(),
   payment_terms: z.string(),
   currency: z.enum(["INR", "USD", "EUR", "GBP", "AED"]),
   exchange_rate: z.number().positive(),

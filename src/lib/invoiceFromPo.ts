@@ -42,10 +42,13 @@ export function mapPurchaseOrderToInvoiceFields(
     deliveryAddress.length > 0 &&
     deliveryAddress !== po.customer_address?.trim();
 
+  const deliveryLines = deliveryAddress.split("\n");
   const consignee_name = hasDeliveryTo
-    ? (deliveryAddress.split("\n")[0]?.trim() ?? "")
+    ? (deliveryLines[0]?.trim() ?? "")
     : po.customer_name;
-  const consignee_address = hasDeliveryTo ? deliveryAddress : po.customer_address;
+  const consignee_address = hasDeliveryTo
+    ? (deliveryLines.slice(1).join("\n").trim() || deliveryAddress)
+    : po.customer_address;
   const buyer_if_other = hasDeliveryTo
     ? [po.customer_name, po.customer_address].filter(Boolean).join("\n")
     : "";
@@ -70,8 +73,9 @@ export function mapPurchaseOrderToInvoiceFields(
   return {
     ...fromPo,
     country_of_destination: customer.country_of_destination,
-    port_of_discharge: customer.port_of_discharge,
-    final_destination: customer.final_destination,
+    // PO-level port/destination overrides the customer master; falls back to buyer if empty.
+    port_of_discharge: po.port_of_discharge?.trim() || customer.port_of_discharge,
+    final_destination: po.final_destination?.trim() || customer.final_destination,
     pre_carriage_by: customer.pre_carriage_by,
     place_of_receipt: customer.place_of_receipt,
     pre_carrier: customer.pre_carrier,

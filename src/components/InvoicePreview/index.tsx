@@ -94,13 +94,9 @@ export function InvoicePreview({ invoice, company }: Props) {
             <div className="whitespace-pre-line mt-0.5">{invoice.buyer_if_other}</div>
           </div>
           <div className="flex border-b border-black">
-            <div className="w-1/2 border-r border-black p-2">
+            <div className="p-2">
               <div className="text-[9px] text-gray-600">Country of Origin of Goods</div>
               <div className="font-semibold mt-0.5">{invoice.country_of_origin}</div>
-            </div>
-            <div className="w-1/2 p-2">
-              <div className="text-[9px] text-gray-600">Country of Final Destination</div>
-              <div className="font-semibold mt-0.5">{invoice.country_of_destination}</div>
             </div>
           </div>
           <div className="p-2 border-b border-black">

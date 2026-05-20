@@ -51,6 +51,8 @@ const DEFAULT_FORM: POFormValues = {
   customer_po_no: "",
   delivery_date: "",
   delivery_address: "",
+  port_of_discharge: "",
+  final_destination: "",
   payment_terms: "",
   currency: "INR",
   exchange_rate: 1,
@@ -91,6 +93,7 @@ export function PurchaseOrderNew() {
   const [generatedNumber, setGeneratedNumber] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [selectedDeliverToCustomerId, setSelectedDeliverToCustomerId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Generate PO number for new PO
@@ -144,6 +147,8 @@ export function PurchaseOrderNew() {
           customer_po_no: po.customer_po_no,
           delivery_date: po.delivery_date,
           delivery_address: po.delivery_address,
+          port_of_discharge: po.port_of_discharge,
+          final_destination: po.final_destination,
           payment_terms: po.payment_terms,
           currency: po.currency,
           exchange_rate: po.exchange_rate,
@@ -194,6 +199,17 @@ export function PurchaseOrderNew() {
         exchange_rate: currency === "INR" ? 1 : f.exchange_rate,
       };
     });
+  }
+
+  function applyDeliverToCustomer(customerId: string) {
+    setSelectedDeliverToCustomerId(customerId);
+    if (!customerId) {
+      setForm((f) => ({ ...f, delivery_address: "" }));
+      return;
+    }
+    const c = customers.find((cu) => String(cu.id) === customerId);
+    if (!c) return;
+    setForm((f) => ({ ...f, delivery_address: [c.name, c.address].filter(Boolean).join("\n") }));
   }
 
   useEffect(() => {
@@ -282,6 +298,7 @@ export function PurchaseOrderNew() {
   }
 
   const totalAmount = form.items.reduce((sum, i) => sum + i.total_amount, 0);
+  const deliverToCustomer = customers.find((c) => String(c.id) === selectedDeliverToCustomerId) ?? null;
 
   return (
     <div className="min-h-full bg-gradient-to-b from-slate-100 via-white to-indigo-50/35">
@@ -425,15 +442,55 @@ export function PurchaseOrderNew() {
         <FormSectionCard
           icon={Truck}
           title="Delivery Details"
+          cardClassName="overflow-visible"
         >
-          <Field label="Deliver To">
-            <Textarea
-              rows={3}
-              placeholder="Company name and address"
-              value={form.delivery_address}
-              onChange={(e) => set("delivery_address", e.target.value)}
-            />
-          </Field>
+          <div className="grid grid-cols-1 gap-4">
+            <Field label="Deliver To">
+              <Combobox
+                value={selectedDeliverToCustomerId}
+                onValueChange={applyDeliverToCustomer}
+                placeholder="Select a customer from master…"
+                searchPlaceholder="Type customer name or country…"
+                options={customers.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  sublabel: [c.country_of_destination, c.currency].filter(Boolean).join(" · "),
+                }))}
+              />
+            </Field>
+            {deliverToCustomer && (
+              <p className="text-xs text-muted-foreground">
+                Linked to customer record #{deliverToCustomer.id}
+                {deliverToCustomer.name ? ` — ${deliverToCustomer.name}` : ""}
+              </p>
+            )}
+            {form.delivery_address && (
+              <Field label="Delivery Address">
+                <Textarea
+                  rows={3}
+                  value={form.delivery_address}
+                  onChange={(e) => set("delivery_address", e.target.value)}
+                />
+              </Field>
+            )}
+            {/* PO-level delivery override for invoices (takes priority over buyer) */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Port of Discharge">
+                <Input
+                  placeholder="e.g. BUSAN"
+                  value={form.port_of_discharge}
+                  onChange={(e) => set("port_of_discharge", e.target.value)}
+                />
+              </Field>
+              <Field label="Final Destination">
+                <Input
+                  placeholder="e.g. KOREA"
+                  value={form.final_destination}
+                  onChange={(e) => set("final_destination", e.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
         </FormSectionCard>
 
         <FormSectionCard

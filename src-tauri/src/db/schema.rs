@@ -310,5 +310,27 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 18,
+            description: "add_company_logo_to_settings",
+            // Base64-encoded company logo image; empty string means no logo set.
+            sql: r#"
+                ALTER TABLE company_settings ADD COLUMN company_logo_base64 TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 19,
+            description: "add_port_and_destination_to_purchase_orders",
+            // PO-level delivery override for invoices; falls back to buyer if empty.
+            // When non-empty these values take precedence over the customer master defaults
+            // during mapPurchaseOrderToInvoiceFields, letting a single PO target a port
+            // or final destination that differs from the buyer's usual shipping lane.
+            sql: r#"
+                ALTER TABLE purchase_orders ADD COLUMN port_of_discharge TEXT NOT NULL DEFAULT '';
+                ALTER TABLE purchase_orders ADD COLUMN final_destination TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }

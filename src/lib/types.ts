@@ -1,6 +1,6 @@
 export type InvoiceStatus = "draft" | "final";
 export type Currency = "USD" | "EUR" | "GBP" | "AED" | "INR";
-export type TransportMode = "BY SEA" | "BY AIR" | "BY ROAD";
+export type TransportMode = "BY SEA" | "BY AIR" | "BY ROAD" | "BY COURIER";
 
 export interface CompanySettings {
   id: number;
@@ -18,6 +18,7 @@ export interface CompanySettings {
   lut_arn_date: string;
   place: string;
   signatory_name: string;
+  company_logo_base64: string;
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +53,7 @@ export interface Invoice {
   notes: string;
   status: InvoiceStatus;
   show_sa_number: boolean;
+  company_logo_base64?: string;
   purchase_order_id?: number | null;
   packing_list?: PackingListItem[];
   created_at: string;

@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Save, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { companySettingsSchema, type CompanySettingsFormValues } from "@/lib/schemas";
 
 export function Settings() {
-  const { settings, loading, saveSettings } = useSettings();
+  const { settings, loading, saveSettings, saveLogo } = useSettings();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
@@ -27,6 +28,36 @@ export function Settings() {
   useEffect(() => {
     if (settings) reset(settings);
   }, [settings, reset]);
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be under 2 MB");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await saveLogo(reader.result as string);
+        toast.success("Logo saved");
+      } catch (err) {
+        toast.error(`Failed to save logo: ${err}`);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleLogoRemove = async () => {
+    try {
+      await saveLogo("");
+      toast.success("Logo removed");
+    } catch (err) {
+      toast.error(`Failed to remove logo: ${err}`);
+    }
+  };
 
   const onSubmit = async (data: CompanySettingsFormValues) => {
     try {
@@ -127,6 +158,55 @@ export function Settings() {
               <Field label="Authorised Signatory Name" error={errors.signatory_name?.message}>
                 <Input {...register("signatory_name")} placeholder="S.DINESH" />
               </Field>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Company Logo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {settings?.company_logo_base64 ? (
+              <div className="flex items-start gap-4">
+                <img
+                  src={settings.company_logo_base64}
+                  alt="Company logo"
+                  className="max-h-24 max-w-48 object-contain border rounded"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogoRemove}
+                >
+                  <X size={14} className="mr-1" />
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No logo uploaded</p>
+            )}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLogoChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} className="mr-1" />
+                {settings?.company_logo_base64 ? "Replace Logo" : "Upload Logo"}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                PNG, JPG, SVG · max 2 MB · saved immediately on selection
+              </p>
             </div>
           </CardContent>
         </Card>

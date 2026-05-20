@@ -57,7 +57,6 @@ export function InvoiceList() {
     { accessorKey: "invoice_date", header: "Date" },
     { accessorKey: "transport_mode", header: "Mode" },
     { accessorKey: "consignee_name", header: "Consignee" },
-    { accessorKey: "country_of_destination", header: "Destination" },
     { accessorKey: "currency", header: "Currency" },
     {
       accessorKey: "status",
