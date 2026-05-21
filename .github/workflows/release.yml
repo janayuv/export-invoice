@@ -60,6 +60,7 @@ jobs:
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
           releaseDraft: false
           prerelease: false
-          # Produces the signed update manifest (latest.json) and .zip + .sig sidecar
-          # files alongside the regular .msi / .exe installers in the GitHub Release.
-          createUpdaterArtifacts: true
+          # Tells tauri-action to create and upload latest.json after the build.
+          # The bundler knows to produce .sig files because bundle.createUpdaterArtifacts
+          # is set to true in tauri.conf.json.
+          includeUpdaterJson: true
