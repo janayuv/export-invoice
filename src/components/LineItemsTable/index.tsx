@@ -209,18 +209,14 @@ function GoodsRow({
         <Input className="min-w-[180px] h-8 text-xs" {...register(`items.${index}.description`)} />
       </Td>
       <Td>
+        {/* Use register (uncontrolled) so the browser owns the display value.
+            The controlled value={String(qty)} pattern reset intermediate input
+            like "1." on every useWatch re-render. unit_price uses the same pattern. */}
         <Input
           className="w-20 h-8 text-xs text-right"
           type="number"
           step="0.001"
-          value={String(qty ?? "")}
-          onChange={(e) =>
-            setValue(
-              `items.${index}.quantity`,
-              e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
-              { shouldValidate: false }
-            )
-          }
+          {...register(`items.${index}.quantity`, { valueAsNumber: true })}
         />
       </Td>
       <Td>

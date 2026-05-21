@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useForm, FormProvider } from "react-hook-form";
+import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
@@ -147,12 +147,14 @@ export function InvoiceNew() {
     },
   });
 
-  const { register, setValue, watch, getValues, reset, formState: { errors, isSubmitting } } = form;
+  const { register, setValue, getValues, reset, formState: { errors, isSubmitting } } = form;
   const handleSubmit = form.handleSubmit;
-  const currency = watch("currency");
-  const transportMode = watch("transport_mode");
-  const incoterm = watch("incoterm");
-  const showSaNumber = watch("show_sa_number") ?? true;
+  // useWatch instead of watch() so only these fields trigger a re-render here,
+  // not every keystroke in child inputs (e.g. Qty).
+  const currency      = useWatch({ control: form.control, name: "currency" }) ?? "USD";
+  const transportMode = useWatch({ control: form.control, name: "transport_mode" }) ?? "BY SEA";
+  const incoterm      = useWatch({ control: form.control, name: "incoterm" }) ?? "";
+  const showSaNumber  = (useWatch({ control: form.control, name: "show_sa_number" }) ?? true) as boolean;
 
   // Pre-fill invoice number and settings defaults for new invoice
   useEffect(() => {
