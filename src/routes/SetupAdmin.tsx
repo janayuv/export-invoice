@@ -2,6 +2,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createUser } from "@/lib/auth";
@@ -49,19 +56,21 @@ export function SetupAdmin() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-96 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="flex justify-center">
-            <ShieldCheck size={40} className="text-primary" />
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
+      <div className="flex w-full max-w-md flex-col gap-6">
+        <div className="flex flex-col items-center gap-2 self-center text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+            <ShieldCheck className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold">First-Time Setup</h1>
-          <p className="text-sm text-muted-foreground">
-            Create an admin account to get started
-          </p>
+          <span className="font-medium">Export Invoice</span>
         </div>
 
-        <div className="border rounded-lg p-6 bg-card shadow-sm space-y-4">
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">First-Time Setup</CardTitle>
+            <CardDescription>Create an admin account to get started</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="space-y-1">
             <Label htmlFor="admin-name">Your Name</Label>
             <Input
@@ -102,7 +111,8 @@ export function SetupAdmin() {
           <Button className="w-full" onClick={handleCreate} disabled={isCreating}>
             {isCreating ? "Creating…" : "Create Admin Account"}
           </Button>
-        </div>
+          </CardContent>
+        </Card>
 
         <p className="text-xs text-center text-muted-foreground">
           This admin account can manage other users from Settings.

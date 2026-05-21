@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
-import { Delete, Check } from "lucide-react";
+import { Delete, Check, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "@/lib/utils";
 import { type User, getActiveUsers, verifyPin } from "@/lib/auth";
@@ -71,14 +78,21 @@ export function LoginScreen() {
   const canSubmit = !!selectedId && pin.length >= 4 && !isVerifying;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-72 space-y-5">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold">Export Invoice</h1>
-          <p className="text-sm text-muted-foreground">Sign in to continue</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="flex items-center gap-2 self-center font-medium">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+            <Package className="h-5 w-5" />
+          </div>
+          Export Invoice
         </div>
 
-        <div className="border rounded-xl p-5 bg-card shadow-sm space-y-4">
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Welcome back</CardTitle>
+            <CardDescription>Select your account and enter your PIN</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           {/* User selector — base-ui Select used directly for precise ItemText control */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
@@ -179,7 +193,8 @@ export function LoginScreen() {
           <Button className="w-full" onClick={submit} disabled={!canSubmit}>
             {isVerifying ? "Verifying…" : "Sign In"}
           </Button>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

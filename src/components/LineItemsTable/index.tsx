@@ -44,10 +44,10 @@ export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolea
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-50/90">
+            <tr className="bg-muted/50">
               <Th className="w-8 text-center">✓</Th>
               <Th>Sr.</Th>
               {showSaNumber && <Th>SA Number</Th>}
@@ -80,7 +80,7 @@ export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolea
         </table>
       </div>
 
-      <Button type="button" variant="outline" size="sm" onClick={addRow} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+      <Button type="button" variant="outline" size="sm" onClick={addRow}>
         <PlusCircle size={14} className="mr-1" />
         Add Row
       </Button>
@@ -110,10 +110,10 @@ export function PackingListTable() {
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-50/90">
+            <tr className="bg-muted/50">
               <Th>Sr.</Th>
               <Th>Marks &amp; Nos</Th>
               <Th>No of Pkgs</Th>
@@ -139,7 +139,7 @@ export function PackingListTable() {
           </tbody>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+      <Button type="button" variant="outline" size="sm" onClick={addRow}>
         <PlusCircle size={14} className="mr-1" />
         Add Row
       </Button>
@@ -178,7 +178,7 @@ function GoodsRow({
   }, [total, currentTotal, index, setValue]);
 
   return (
-    <tr className={`border-b border-slate-100 last:border-b-0 transition-opacity ${included === false ? "opacity-40" : ""}`}>
+    <tr className={`border-b border-border last:border-b-0 transition-opacity ${included === false ? "opacity-40" : ""}`}>
       <Td className="text-center">
         <input
           type="checkbox"
@@ -186,7 +186,7 @@ function GoodsRow({
           onChange={(e) =>
             setValue(`items.${index}.included`, e.target.checked, { shouldValidate: false })
           }
-          className="h-3.5 w-3.5 accent-indigo-600"
+          className="h-3.5 w-3.5 accent-primary"
         />
       </Td>
       <Td>
@@ -195,7 +195,7 @@ function GoodsRow({
           {...register(`items.${index}.sr_no`, { valueAsNumber: true })}
           value={index + 1}
         />
-        <span className="px-1 text-slate-500">{index + 1}</span>
+        <span className="px-1 text-muted-foreground">{index + 1}</span>
       </Td>
       {showSaNumber && (
         <Td>
@@ -242,7 +242,7 @@ function GoodsRow({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 hover:bg-rose-50"
+          className="h-7 w-7 hover:bg-destructive/10"
           onClick={onRemove}
           disabled={!canRemove}
         >
@@ -271,9 +271,9 @@ function PackingListRow({
   const dimensionsUnit = useWatch({ control, name: `packing_list.${index}.dimensions_unit` });
 
   return (
-    <tr className="border-b border-slate-100 last:border-b-0">
+    <tr className="border-b border-border last:border-b-0">
       <Td>
-        <span className="px-1 text-slate-500">{index + 1}</span>
+        <span className="px-1 text-muted-foreground">{index + 1}</span>
       </Td>
       <Td>
         <Input className="min-w-[140px] h-8 text-xs" {...register(`packing_list.${index}.marks_nos`)} />
@@ -310,7 +310,7 @@ function PackingListRow({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 hover:bg-rose-50"
+          className="h-7 w-7 hover:bg-destructive/10"
           onClick={onRemove}
           disabled={!canRemove}
         >
@@ -329,7 +329,7 @@ function GoodsTotalsFooter({ control, showSaNumber }: { control: ReturnType<type
   const totalAmt = includedItems.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
 
   return (
-    <tr className="bg-slate-50 font-semibold text-sm text-slate-700">
+    <tr className="bg-muted/50 font-semibold text-sm text-foreground">
       <Td colSpan={showSaNumber ? 5 : 4} className="text-right pr-2">TOTAL</Td>
       <Td className="text-right pr-1">
         {totalQty.toLocaleString("en-US", { maximumFractionDigits: 3 })}
@@ -346,7 +346,7 @@ function GoodsTotalsFooter({ control, showSaNumber }: { control: ReturnType<type
 
 function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={`border border-slate-200/80 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 ${className ?? ""}`}>
+    <th className={`border border-border px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ${className ?? ""}`}>
       {children}
     </th>
   );
@@ -364,7 +364,7 @@ function Td({
   return (
     <td
       colSpan={colSpan}
-      className={`border border-slate-200/80 px-1 py-1 ${className ?? ""}`}
+      className={`border border-border px-1 py-1 ${className ?? ""}`}
     >
       {children}
     </td>

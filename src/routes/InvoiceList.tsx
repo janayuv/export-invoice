@@ -86,15 +86,15 @@ export function InvoiceList() {
           <h2 className="text-2xl font-bold">Invoices</h2>
           <p className="text-muted-foreground text-sm mt-1">{invoices.length} total invoices</p>
         </div>
-        <Button onClick={() => navigate("/invoices/new")}>
-          <PlusCircle size={16} className="mr-2" />
+        <Button size="sm" onClick={() => navigate("/invoices/new")}>
+          <PlusCircle size={16} className="mr-1" />
           New Invoice
         </Button>
       </div>
 
       <div className="flex gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search invoice or consignee..."
             value={globalFilter}
@@ -117,7 +117,7 @@ export function InvoiceList() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
-        <div className="border rounded-md">
+        <div className="border rounded-lg overflow-hidden">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((hg) => (
@@ -146,7 +146,7 @@ export function InvoiceList() {
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className="cursor-pointer hover:bg-accent"
+                    className="cursor-pointer"
                     onClick={() => navigate(`/invoices/${row.original.id}`)}
                   >
                     {row.getVisibleCells().map((cell) => (

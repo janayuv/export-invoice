@@ -123,8 +123,8 @@ export function Combobox({
         type="button"
         onClick={openDropdown}
         className={cn(
-          "flex h-8 w-full items-center justify-between rounded-lg border border-input bg-white px-2.5 text-sm transition-colors",
-          "hover:bg-slate-50 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          "flex h-8 w-full items-center justify-between rounded-lg border border-input bg-background px-2.5 text-sm transition-colors",
+          "hover:bg-accent focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
           !selected && "text-muted-foreground"
         )}
       >
@@ -158,20 +158,20 @@ export function Combobox({
               left: menuStyle.left,
               width: menuStyle.width,
             }}
-            className="z-[200] overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-900 shadow-xl ring-1 ring-slate-200/80"
+            className="z-[200] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl ring-1 ring-foreground/10"
           >
-            <div className="border-b border-slate-100 bg-white p-1.5">
+            <div className="border-b border-border bg-popover p-1.5">
               <Input
                 ref={inputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={searchPlaceholder}
-                className="h-7 bg-white text-sm"
+                className="h-7 bg-background text-sm"
               />
             </div>
 
-            <ul className="max-h-52 overflow-y-auto bg-white py-1">
+            <ul className="max-h-52 overflow-y-auto bg-popover py-1">
               {filtered.length === 0 ? (
                 <li className="px-3 py-2 text-center text-sm text-muted-foreground">
                   No results found
@@ -185,18 +185,18 @@ export function Combobox({
                     onClick={() => selectOption(opt)}
                     className={cn(
                       "flex cursor-pointer select-none items-center justify-between px-3 py-2 text-sm",
-                      "hover:bg-indigo-50 hover:text-slate-900",
-                      opt.value === value && "bg-indigo-50/80"
+                      "hover:bg-accent hover:text-accent-foreground",
+                      opt.value === value && "bg-accent"
                     )}
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-medium text-slate-900">{opt.label}</div>
+                      <div className="truncate font-medium text-popover-foreground">{opt.label}</div>
                       {opt.sublabel && (
-                        <div className="truncate text-xs text-slate-500">{opt.sublabel}</div>
+                        <div className="truncate text-xs text-muted-foreground">{opt.sublabel}</div>
                       )}
                     </div>
                     {opt.value === value && (
-                      <Check size={14} className="ml-2 shrink-0 text-indigo-600" />
+                      <Check size={14} className="ml-2 shrink-0 text-primary" />
                     )}
                   </li>
                 ))

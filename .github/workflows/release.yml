@@ -41,17 +41,15 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            ### Entry Module
-            - New **Entries** section for linking export shipments to invoices and purchase orders
-            - Auto-fills PO number, PO date, goods, and invoice total from the selected invoice
-            - Manual fields: exchange rate, local invoice no/date, shipping bill no/date, BL/AWB no/date
-            - Invoice picker excludes invoices already used in another entry
+            ### Theme & Appearance Overhaul
+            - Full **shadcn-style theme** applied across the app with a consistent token-based color system
+            - **Light / Dark / System** theme switcher (powered by next-themes) in the sidebar footer; selection persists across restarts
+            - Refreshed **sidebar shell** and **login / first-time-setup** screens to match the new theme
+            - Reworked all forms and screens (Customers, New Invoice, New Entry, New Purchase Order, lists, dialogs, selects, comboboxes, line-item tables) to use theme tokens so they adapt cleanly to light and dark modes
 
-            ### Entry Report
-            - New **Entry Report** under Reports — flattened view with one row per invoice line item
-            - Columns: Customer, Invoice No, Invoice Date, PO No, PO Date, Part No, Description, Qty, Rate, Invoice Total, Ex. Rate, Local Invoice No/Date, Shipping Bill No/Date, BL/AWB No/Date
-            - Global search, sortable columns, Export to Excel (.xlsx)
-            - Edit and Delete actions on each row resolve to the correct parent Entry record
+            ### Consistency & Polish
+            - Unified card surfaces, spacing, table row density, button hierarchy, section headers, and empty states
+            - Fixed color token plumbing so surfaces, borders, popovers, and opacity variants render correctly in both modes
 
             ---
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).

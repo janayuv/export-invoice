@@ -14,6 +14,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -70,24 +71,20 @@ export function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <aside className="w-64 flex-shrink-0 bg-gradient-to-b from-card to-card/95 border-r border-border/60 flex flex-col relative">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/3 via-transparent to-transparent pointer-events-none" />
-        
-        <div className="relative p-5 border-b border-border/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-sm">
-              <Package className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-foreground tracking-tight">
-                Export Invoice
-              </h1>
-              <p className="text-xs text-muted-foreground/70 font-medium">v1.0.0</p>
-            </div>
+      <aside className="w-64 flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
+        <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
+            <Package className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <div className="leading-tight">
+            <h1 className="text-sm font-semibold text-foreground tracking-tight">
+              Export Invoice
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium">v1.0.0</p>
           </div>
         </div>
 
-        <nav className="relative flex-1 py-4 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
           <div className="px-3 space-y-5">
             {sections.map((section) => {
               const visible = section.items.filter((i) => i.show);
@@ -108,7 +105,7 @@ export function Layout() {
                             "group flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden",
                             isActive
                               ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                           )
                         }
                       >
@@ -142,10 +139,14 @@ export function Layout() {
           </div>
         </nav>
 
+        <div className="p-3 border-t border-sidebar-border">
+          <ThemeToggle />
+        </div>
+
         {currentUser && (
-          <div className="relative p-3 border-t border-border/50 bg-muted/20">
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-card/60 border border-border/30">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted-foreground/20 to-muted-foreground/10 flex items-center justify-center border border-border/50">
+          <div className="p-3 border-t border-sidebar-border">
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-sidebar-accent border border-sidebar-border">
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center border border-sidebar-border">
                 <span className="text-sm font-semibold text-muted-foreground">
                   {currentUser.name.charAt(0).toUpperCase()}
                 </span>
@@ -173,7 +174,7 @@ export function Layout() {
         )}
       </aside>
 
-      <main className="flex-1 overflow-auto bg-background/50">
+      <main className="flex-1 overflow-auto bg-muted/30">
         <Outlet />
       </main>
 

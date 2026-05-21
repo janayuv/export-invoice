@@ -42,15 +42,15 @@ export function EntryList() {
           <p className="text-muted-foreground text-sm mt-1">{entries.length} total entries</p>
         </div>
         {can("create_invoice") && (
-          <Button onClick={() => navigate("/entries/new")}>
-            <PlusCircle size={16} className="mr-2" />
+          <Button size="sm" onClick={() => navigate("/entries/new")}>
+            <PlusCircle size={16} className="mr-1" />
             New Entry
           </Button>
         )}
       </div>
 
       <div className="relative flex-1 max-w-sm">
-        <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search customer, invoice, PO, shipping bill…"
           value={filter}
@@ -62,7 +62,7 @@ export function EntryList() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
-        <div className="border rounded-md">
+        <div className="border rounded-lg overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -86,7 +86,7 @@ export function EntryList() {
                 filtered.map((entry) => (
                   <TableRow
                     key={entry.id}
-                    className="cursor-pointer hover:bg-accent"
+                    className="cursor-pointer"
                     onClick={() => navigate(`/entries/${entry.id}/edit`)}
                   >
                     <TableCell>{entry.customer_name || "—"}</TableCell>

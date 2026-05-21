@@ -393,35 +393,35 @@ export function InvoiceNew() {
     <FormProvider {...form}>
       <form
         onSubmit={handleSubmit((data) => onSubmit(data))}
-        className="min-h-full bg-gradient-to-b from-slate-100 via-white to-indigo-50/40"
+        className="min-h-full bg-muted/30"
       >
         <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-          <header className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm shadow-slate-200/70 backdrop-blur sm:p-6">
+          <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                   <FilePlus2 className="h-5 w-5" aria-hidden />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                  <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                     {isEdit ? "Edit Invoice" : "New Invoice"}
                   </h1>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Commercial export invoice and packing list
                   </p>
                   {generatedNumber && !isEdit && (
-                    <span className="mt-2 inline-flex items-center rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/15">
+                    <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
                       {generatedNumber}
                     </span>
                   )}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => navigate(-1)} className="border-slate-300 text-slate-700">
+                <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                   <ArrowLeft size={16} className="mr-1" />
                   Cancel
                 </Button>
-                <Button type="submit" variant="outline" disabled={isSubmitting} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                <Button type="submit" variant="outline" disabled={isSubmitting}>
                   <Save size={16} className="mr-1" />
                   {isEdit && editingStatus === "final" ? "Save Changes" : "Save Draft"}
                 </Button>
@@ -430,7 +430,6 @@ export function InvoiceNew() {
                     type="button"
                     disabled={isSubmitting}
                     onClick={handleSubmit((data) => onSubmit(data, true))}
-                    className="bg-indigo-600 text-white hover:bg-indigo-700"
                   >
                     <CheckCircle size={16} className="mr-1" />
                     Finalize
@@ -442,15 +441,15 @@ export function InvoiceNew() {
 
           {/* Customer + purchase order loaders */}
           {customers.length > 0 && (
-            <Card className="overflow-visible border-slate-200/80 bg-white shadow-sm">
+            <Card className="overflow-visible shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base text-slate-900">Customer & Purchase Order</CardTitle>
+                <CardTitle className="text-base">Customer & Purchase Order</CardTitle>
                 <CardDescription>Select a customer to prefill shipping details and optionally load a purchase order.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 pt-0">
               <div className="flex flex-wrap items-center gap-3">
-                <UserCheck size={16} className="shrink-0 text-indigo-600" />
-                <span className="whitespace-nowrap text-sm font-medium text-slate-600">
+                <UserCheck size={16} className="shrink-0 text-primary" />
+                <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
                   Customer
                 </span>
                 <Combobox
@@ -468,8 +467,8 @@ export function InvoiceNew() {
               </div>
               {selectedCustomerId && (
                 <div className="flex flex-wrap items-center gap-3 pl-7">
-                  <FileText size={16} className="shrink-0 text-indigo-600" />
-                  <span className="whitespace-nowrap text-sm font-medium text-slate-600">
+                  <FileText size={16} className="shrink-0 text-primary" />
+                  <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
                     Purchase Order
                   </span>
                   <Select
@@ -664,11 +663,11 @@ export function InvoiceNew() {
             description="Product line items: part number, description, quantity, and rate."
           >
             <div className="mb-3">
-              <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
                 <input
                   type="checkbox"
                   {...register("show_sa_number")}
-                  className="h-3.5 w-3.5 accent-indigo-600"
+                  className="h-3.5 w-3.5 accent-primary"
                 />
                 Show SA Number column
               </label>
@@ -720,7 +719,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs font-medium uppercase tracking-wide text-slate-600">{label}</Label>
+      <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</Label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
@@ -739,16 +738,16 @@ function FormSectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="border-slate-200/80 bg-white shadow-sm">
-      <CardHeader className="border-b border-slate-100 pb-4">
+    <Card className="shadow-sm">
+      <CardHeader className="border-b border-border pb-4">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
             <Icon className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-base text-slate-900">{title}</CardTitle>
+            <CardTitle className="text-base">{title}</CardTitle>
             {description ? (
-              <CardDescription className="mt-1 text-xs text-slate-500">
+              <CardDescription className="mt-1 text-xs">
                 {description}
               </CardDescription>
             ) : null}

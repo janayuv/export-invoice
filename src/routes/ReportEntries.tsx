@@ -192,14 +192,14 @@ export function ReportEntries() {
           <h2 className="text-2xl font-bold">Entry Report</h2>
           <p className="text-muted-foreground text-sm mt-1">{filtered.length} rows</p>
         </div>
-        <Button variant="outline" onClick={handleExport}>
-          <FileSpreadsheet size={16} className="mr-2" />
+        <Button variant="outline" size="sm" onClick={handleExport}>
+          <FileSpreadsheet size={16} className="mr-1" />
           Export Excel
         </Button>
       </div>
 
       <div className="relative flex-1 max-w-sm">
-        <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search customer, invoice, PO, shipping bill…"
           value={globalFilter}
@@ -211,7 +211,7 @@ export function ReportEntries() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
-        <div className="border rounded-md overflow-x-auto">
+        <div className="border rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((hg) => (

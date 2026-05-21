@@ -78,7 +78,7 @@ export function PurchaseOrderList() {
             {filtered.map((o) => (
               <TableRow
                 key={o.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer"
                 onClick={() => navigate(`/purchase-orders/${o.id}`)}
               >
                 <TableCell className="font-medium">{o.customer_po_no || "—"}</TableCell>

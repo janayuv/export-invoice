@@ -256,30 +256,30 @@ export function EntryNew() {
   return (
     <form
       onSubmit={form.handleSubmit(onSubmit)}
-      className="min-h-full bg-gradient-to-b from-slate-100 via-white to-indigo-50/40"
+      className="min-h-full bg-muted/30"
     >
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <header className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm sm:p-6">
+        <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <FilePlus2 className="h-5 w-5" aria-hidden />
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                   {isEdit ? "Edit Entry" : "New Entry"}
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Export entry linking a customer, invoice, and shipping references
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => navigate(-1)} className="border-slate-300 text-slate-700">
+              <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                 <ArrowLeft size={16} className="mr-1" />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-indigo-600 text-white hover:bg-indigo-700">
+              <Button type="submit" disabled={isSubmitting}>
                 <Save size={16} className="mr-1" />
                 {isEdit ? "Save Changes" : "Save Entry"}
               </Button>
@@ -291,7 +291,7 @@ export function EntryNew() {
         <SectionCard icon={UserCheck} title="Customer & Invoice" description="Select a customer, then an invoice to auto-fill PO and goods details.">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="w-24 shrink-0 text-sm font-medium text-slate-600">Customer</span>
+              <span className="w-24 shrink-0 text-sm font-medium text-muted-foreground">Customer</span>
               <Combobox
                 className="flex-1 min-w-[200px] max-w-sm"
                 value={selectedCustomerId}
@@ -307,7 +307,7 @@ export function EntryNew() {
             </div>
             {selectedCustomerId && (
               <div className="flex flex-wrap items-center gap-3">
-                <span className="w-24 shrink-0 text-sm font-medium text-slate-600">Invoice</span>
+                <span className="w-24 shrink-0 text-sm font-medium text-muted-foreground">Invoice</span>
                 <Combobox
                   className="flex-1 min-w-[200px] max-w-sm"
                   value={selectedInvoiceId}
@@ -407,7 +407,7 @@ export function EntryNew() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs font-medium uppercase tracking-wide text-slate-600">{label}</Label>
+      <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</Label>
       {children}
     </div>
   );
@@ -433,16 +433,16 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="overflow-visible border-slate-200/80 bg-white shadow-sm">
-      <CardHeader className="border-b border-slate-100 pb-4">
+    <Card className="overflow-visible shadow-sm">
+      <CardHeader className="border-b border-border pb-4">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
             <Icon className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-base text-slate-900">{title}</CardTitle>
+            <CardTitle className="text-base">{title}</CardTitle>
             {description ? (
-              <CardDescription className="mt-1 text-xs text-slate-500">{description}</CardDescription>
+              <CardDescription className="mt-1 text-xs">{description}</CardDescription>
             ) : null}
           </div>
         </div>

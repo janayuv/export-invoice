@@ -74,7 +74,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs font-medium uppercase tracking-wide text-slate-600">{label}</Label>
+      <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</Label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
@@ -301,34 +301,34 @@ export function PurchaseOrderNew() {
   const deliverToCustomer = customers.find((c) => String(c.id) === selectedDeliverToCustomerId) ?? null;
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-white to-indigo-50/35">
+    <div className="min-h-full bg-muted/30">
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <header className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm shadow-slate-200/70 sm:p-6">
+        <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <FilePlus2 size={18} />
               </div>
               <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
+                <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                   {isEdit ? "Edit Purchase Order" : "New Purchase Order"}
                 </h2>
                 {generatedNumber && !isEdit && (
-                  <p className="mt-1 text-sm text-slate-500">Number: {generatedNumber}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Number: {generatedNumber}</p>
                 )}
               </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button variant="outline" onClick={() => navigate(-1)} disabled={isSubmitting} className="border-slate-300 text-slate-700">
+              <Button variant="outline" onClick={() => navigate(-1)} disabled={isSubmitting}>
                 <ArrowLeft size={16} className="mr-1" />
                 Cancel
               </Button>
-              <Button variant="outline" onClick={() => handleSubmit(false)} disabled={isSubmitting} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+              <Button variant="outline" onClick={() => handleSubmit(false)} disabled={isSubmitting}>
                 <Save size={16} className="mr-1" />
                 {isEdit && form.status === "confirmed" ? "Save Changes" : "Save Draft"}
               </Button>
               {(!isEdit || form.status === "draft") && can("finalize_invoice") && (
-                <Button onClick={() => handleSubmit(true)} disabled={isSubmitting} className="bg-indigo-600 text-white hover:bg-indigo-700">
+                <Button onClick={() => handleSubmit(true)} disabled={isSubmitting}>
                   <CheckCircle size={16} className="mr-1" /> Confirm PO
                 </Button>
               )}
@@ -500,12 +500,12 @@ export function PurchaseOrderNew() {
         >
           <div className="space-y-3">
           <div className="mb-1">
-            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={form.show_sa_number}
                 onChange={(e) => set("show_sa_number", e.target.checked)}
-                className="h-3.5 w-3.5 accent-indigo-600"
+                className="h-3.5 w-3.5 accent-primary"
               />
               Show SA Number column
             </label>
@@ -513,7 +513,7 @@ export function PurchaseOrderNew() {
           {fieldErrors.items && (
             <p className="text-xs text-destructive">{fieldErrors.items}</p>
           )}
-          <div className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} gap-2 rounded-md bg-slate-50 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600`}>
+          <div className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} gap-2 rounded-md bg-muted/50 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground`}>
             <span>Sr.</span>
             {form.show_sa_number && <span>SA Number</span>}
             <span>Part Number</span>
@@ -528,9 +528,9 @@ export function PurchaseOrderNew() {
           {form.items.map((item, idx) => (
             <div
               key={idx}
-              className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} items-center gap-2 rounded-md border border-slate-200/80 bg-white px-2 py-2`}
+              className={`grid ${form.show_sa_number ? "grid-cols-[2rem_6rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]" : "grid-cols-[2rem_1fr_2fr_5rem_5rem_7rem_7rem_2rem]"} items-center gap-2 rounded-md border border-border bg-card px-2 py-2`}
             >
-              <span className="text-center text-xs text-slate-500">{item.sr_no}</span>
+              <span className="text-center text-xs text-muted-foreground">{item.sr_no}</span>
               {form.show_sa_number && (
                 <Input
                   placeholder="SA No."
@@ -581,7 +581,7 @@ export function PurchaseOrderNew() {
                 type="button"
                 onClick={() => removeItem(idx)}
                 disabled={form.items.length === 1}
-                className="text-slate-500 transition-colors hover:text-rose-600 disabled:opacity-20"
+                className="text-muted-foreground transition-colors hover:text-destructive disabled:opacity-20"
               >
                 <Trash2 size={14} />
               </button>
@@ -593,15 +593,15 @@ export function PurchaseOrderNew() {
             variant="outline"
             size="sm"
             onClick={addItem}
-            className="mt-1 border-indigo-200 text-xs text-indigo-700 hover:bg-indigo-50"
+            className="mt-1 text-xs"
           >
             <Plus size={14} className="mr-1" /> Add Row
           </Button>
 
-          <div className="flex justify-end border-t border-slate-200 pt-3">
+          <div className="flex justify-end border-t border-border pt-3">
             <div className="text-right space-y-1">
               <div className="flex items-center gap-8 text-sm">
-                <span className="font-medium text-slate-600">TOTAL {form.currency}</span>
+                <span className="font-medium text-muted-foreground">TOTAL {form.currency}</span>
                 <span className="font-bold min-w-24 text-right">
                   {totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
@@ -641,16 +641,16 @@ function FormSectionCard({
   cardClassName?: string;
 }) {
   return (
-    <Card className={`border-slate-200/80 bg-white shadow-sm ${cardClassName ?? ""}`}>
-      <CardHeader className="border-b border-slate-100 pb-4">
+    <Card className={`shadow-sm ${cardClassName ?? ""}`}>
+      <CardHeader className="border-b border-border pb-4">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
             <Icon className="h-4 w-4" />
           </div>
           <div>
-            <CardTitle className="text-base text-slate-900">{title}</CardTitle>
+            <CardTitle className="text-base">{title}</CardTitle>
             {description ? (
-              <p className="mt-1 text-xs text-slate-500">{description}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{description}</p>
             ) : null}
           </div>
         </div>
