@@ -46,15 +46,13 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            ### In-App Update Button
-            - A **Check for Updates** button (↻) now appears in the sidebar header next to the app version
-            - Clicking checks GitHub Releases for a newer version; a notification appears with **Install** and **Later** options
-            - Download progress is shown as a percentage while the update downloads in the background
-            - The app closes and relaunches automatically once the installer is ready
-            - Clear feedback at every step: checking, available, downloading (N%), complete, and error states all produce distinct tooltips and toasts
-
-            ### Version Display
-            - The sidebar version is now **dynamic** — always reads from the packaged app version at runtime, replacing the old hardcoded label
+            ### In-App Database Picker
+            - A new **Database File** card in Settings lets you point the app at any SQLite file instead of the bundled default
+            - Click **Browse…** to pick a `.db`, `.sqlite`, or `.sqlite3` file via a native file dialog
+            - The active database path is displayed; **Use Default** resets back to `export_invoice.db` with one click
+            - The chosen path is persisted across restarts (localStorage + a Rust-readable `selected_db.txt` mirror in the app config dir)
+            - The Rust startup layer reads `selected_db.txt` and registers the full migration set for the selected file, so a brand-new empty database is automatically migrated on first load
+            - Selecting or resetting falls back safely to the default if the target file is missing or the FS write fails — the two persistence layers are always kept in sync
 
             ---
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).

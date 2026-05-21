@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Save, Upload, X } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { Database, FolderOpen, RotateCcw, Save, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +11,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
 import { companySettingsSchema, type CompanySettingsFormValues } from "@/lib/schemas";
+import {
+  DEFAULT_DB_PATH,
+  clearDbPath,
+  getStoredDbPath,
+  setDbPath,
+} from "@/lib/db";
 
 export function Settings() {
   const { settings, loading, saveSettings, saveLogo } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dbPath, setDbPathState] = useState<string | null>(getStoredDbPath());
 
   const {
     register,
@@ -56,6 +64,35 @@ export function Settings() {
       toast.success("Logo removed");
     } catch (err) {
       toast.error(`Failed to remove logo: ${err}`);
+    }
+  };
+
+  const handleDbBrowse = async () => {
+    try {
+      const selected = await open({
+        title: "Select SQLite Database",
+        multiple: false,
+        directory: false,
+        filters: [
+          { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
+        ],
+      });
+      if (typeof selected !== "string") return; // cancelled
+      await setDbPath(selected);
+      setDbPathState(selected);
+      toast.success("Database selected — restart the app to load it");
+    } catch (err) {
+      toast.error(`Failed to select database: ${err}`);
+    }
+  };
+
+  const handleDbReset = async () => {
+    try {
+      await clearDbPath();
+      setDbPathState(null);
+      toast.success("Reverted to default database — restart the app to apply");
+    } catch (err) {
+      toast.error(`Failed to reset database: ${err}`);
     }
   };
 
@@ -208,6 +245,39 @@ export function Settings() {
                 PNG, JPG, SVG · max 2 MB · saved immediately on selection
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Database size={16} />
+              Database File
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-sm">Active database</Label>
+              <p className="text-sm font-mono break-all rounded border bg-muted/40 px-2 py-1.5">
+                {dbPath ?? `${DEFAULT_DB_PATH} (default)`}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={handleDbBrowse}>
+                <FolderOpen size={14} className="mr-1" />
+                Browse…
+              </Button>
+              {dbPath && (
+                <Button type="button" variant="outline" size="sm" onClick={handleDbReset}>
+                  <RotateCcw size={14} className="mr-1" />
+                  Use Default
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pick a .db / .sqlite file to use instead of the bundled database.
+              Restart the app after changing this for it to take effect.
+            </p>
           </CardContent>
         </Card>
 
