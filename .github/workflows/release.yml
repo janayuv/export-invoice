@@ -35,6 +35,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Ed25519 private key used by Tauri to sign updater artifacts (.sig files).
+          # Store the key value in repo Settings → Secrets → TAURI_SIGNING_PRIVATE_KEY.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Key was generated without a password; variable must still be present but empty.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Export Invoice ${{ github.ref_name }}'
@@ -55,3 +60,6 @@ jobs:
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
           releaseDraft: false
           prerelease: false
+          # Produces the signed update manifest (latest.json) and .zip + .sig sidecar
+          # files alongside the regular .msi / .exe installers in the GitHub Release.
+          createUpdaterArtifacts: true
