@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { getVersion } from "@tauri-apps/api/app";
+import { useUpdater } from "@/hooks/useUpdater";
 import {
   LayoutDashboard,
   FileText,
@@ -12,6 +15,7 @@ import {
   Package,
   ClipboardList,
   BarChart3,
+  RefreshCw,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -31,6 +35,12 @@ type NavSection = {
 
 export function Layout() {
   const { currentUser, logout, can } = useAuth();
+  const { state: updaterState, checkForUpdates } = useUpdater();
+  const [appVersion, setAppVersion] = useState("0.4.0");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   const sections: NavSection[] = [
     {
@@ -76,11 +86,63 @@ export function Layout() {
           <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
             <Package className="w-5 h-5 text-primary-foreground" />
           </div>
-          <div className="leading-tight">
+          <div className="flex-1 min-w-0 leading-tight">
             <h1 className="text-sm font-semibold text-foreground tracking-tight">
               Export Invoice
             </h1>
-            <p className="text-xs text-muted-foreground font-medium">v1.0.0</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-muted-foreground font-medium">
+                v{appVersion}
+              </p>
+              <button
+                type="button"
+                onClick={
+                  updaterState.phase === "idle" ||
+                  updaterState.phase === "up-to-date" ||
+                  updaterState.phase === "error" ||
+                  updaterState.phase === "available"
+                    ? checkForUpdates
+                    : undefined
+                }
+                disabled={
+                  updaterState.phase === "checking" ||
+                  updaterState.phase === "downloading" ||
+                  updaterState.phase === "done"
+                }
+                title={
+                  updaterState.phase === "available"
+                    ? `Update v${updaterState.version} available`
+                    : updaterState.phase === "checking"
+                      ? "Checking for updates…"
+                      : updaterState.phase === "downloading"
+                        ? updaterState.percent !== null
+                          ? `Downloading update (${updaterState.percent}%)`
+                          : "Downloading update…"
+                        : updaterState.phase === "done"
+                          ? "Relaunch the app to apply the update"
+                          : "Check for updates"
+                }
+                className={cn(
+                  "flex items-center justify-center rounded transition-colors",
+                  updaterState.phase === "available"
+                    ? "text-primary"
+                    : updaterState.phase === "checking" ||
+                        updaterState.phase === "downloading" ||
+                        updaterState.phase === "done"
+                      ? "text-muted-foreground/30 cursor-not-allowed"
+                      : "text-muted-foreground/50 hover:text-muted-foreground"
+                )}
+              >
+                <RefreshCw
+                  size={11}
+                  className={cn(
+                    (updaterState.phase === "checking" ||
+                      updaterState.phase === "downloading") &&
+                      "animate-spin"
+                  )}
+                />
+              </button>
+            </div>
           </div>
         </div>
 

@@ -46,15 +46,15 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            ### Theme & Appearance Overhaul
-            - Full **shadcn-style theme** applied across the app with a consistent token-based color system
-            - **Light / Dark / System** theme switcher (powered by next-themes) in the sidebar footer; selection persists across restarts
-            - Refreshed **sidebar shell** and **login / first-time-setup** screens to match the new theme
-            - Reworked all forms and screens (Customers, New Invoice, New Entry, New Purchase Order, lists, dialogs, selects, comboboxes, line-item tables) to use theme tokens so they adapt cleanly to light and dark modes
+            ### In-App Update Button
+            - A **Check for Updates** button (↻) now appears in the sidebar header next to the app version
+            - Clicking checks GitHub Releases for a newer version; a notification appears with **Install** and **Later** options
+            - Download progress is shown as a percentage while the update downloads in the background
+            - The app closes and relaunches automatically once the installer is ready
+            - Clear feedback at every step: checking, available, downloading (N%), complete, and error states all produce distinct tooltips and toasts
 
-            ### Consistency & Polish
-            - Unified card surfaces, spacing, table row density, button hierarchy, section headers, and empty states
-            - Fixed color token plumbing so surfaces, borders, popovers, and opacity variants render correctly in both modes
+            ### Version Display
+            - The sidebar version is now **dynamic** — always reads from the packaged app version at runtime, replacing the old hardcoded label
 
             ---
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
