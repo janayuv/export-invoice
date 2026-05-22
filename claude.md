@@ -27,11 +27,22 @@ Use this block when extending invoice/PO flows or export layouts.
   • Invoice now uses PO delivery fields when present/non-empty; falls back to buyer details otherwise.
   • Inline comments added for future clarity.
 
+### 1a. In-app SQLite DB selection (restart-based)
+
+The user can point the app at a different `.db` file from the **Settings → "Database File" card** — this is the **only** allowed DB-selection UI; no other route may change the DB path.
+
+- **Default fallback:** with no selection, both layers resolve to `export_invoice.db` (`DEFAULT_DB_PATH` in `db.ts`; `DEFAULT_DB_URL = "sqlite:export_invoice.db"` in Rust). Rust falls back to the default whenever the selection file is missing, empty, or names a file not present on disk.
+- **Dual persistence contract:** a selection is stored in **two places that must always move together** — `localStorage["db_path"]` (read by the frontend's `getDbPath()`) and `selected_db.txt` in `%APPDATA%\com.exportinvoice.app` (read by Rust `resolve_db_url()` at startup). The frontend writes the identical absolute string to both; the loaded `sqlite:<path>` must byte-match what Rust registers.
+- **FS-before-localStorage ordering (do not reorder):** `setDbPath`/`clearDbPath` perform the fallible FS write/remove on `selected_db.txt` **before** mutating localStorage. If the FS op fails, localStorage stays unchanged so the two layers can't diverge and the app keeps pointing at the previously-registered DB. Never update localStorage first.
+- **Restart required after switching:** tauri-plugin-sql registers and applies migrations lazily on `Database.load`, keyed by the **exact** `sqlite:<path>` connection string. Rust reads the selection ONCE at process startup and registers the migration set under that string — so a DB picked mid-session is not migrated until relaunch. The Settings UI toasts "restart the app" for this reason.
+- **Centralized ownership:** all DB-path changes go through `setDbPath`/`clearDbPath` in `src/lib/db.ts` (both async; both reset `_db = null` so `getDb()` reconnects). Any future code that changes the DB path **must update both persistence layers together** via these helpers — never write one layer alone.
+
 ### 2. Files affected (by area)
 
 | Area | Paths |
 |---|---|
 | Schema | `src-tauri/src/db/schema.rs` (migrations 1–19) |
+| DB selection | `src/lib/db.ts` (`setDbPath`/`clearDbPath`/`getDbPath`), `src-tauri/src/lib.rs` (`resolve_db_url`), `src/routes/Settings.tsx` (Database File card) |
 | Types | `src/lib/types.ts`, `src/lib/schemas.ts` |
 | Invoice CRUD | `src/hooks/useInvoices.ts` |
 | PO CRUD | `src/hooks/usePurchaseOrders.ts` |

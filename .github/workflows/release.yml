@@ -46,13 +46,10 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            ### In-App Database Picker
-            - A new **Database File** card in Settings lets you point the app at any SQLite file instead of the bundled default
-            - Click **Browse…** to pick a `.db`, `.sqlite`, or `.sqlite3` file via a native file dialog
-            - The active database path is displayed; **Use Default** resets back to `export_invoice.db` with one click
-            - The chosen path is persisted across restarts (localStorage + a Rust-readable `selected_db.txt` mirror in the app config dir)
-            - The Rust startup layer reads `selected_db.txt` and registers the full migration set for the selected file, so a brand-new empty database is automatically migrated on first load
-            - Selecting or resetting falls back safely to the default if the target file is missing or the FS write fails — the two persistence layers are always kept in sync
+            ### Bug fix — Database File picker (Settings)
+            - Fixed a **"forbidden path"** runtime error that prevented the Browse button from writing or clearing `selected_db.txt` in the app config directory
+            - Root cause: the Tauri capability granted the `write_text_file`/`remove`/`exists` commands but no path scope for `%APPDATA%\com.exportinvoice.app`; added `fs:scope-appconfig-recursive` to resolve it
+            - Export / PDF / Excel save flows are unaffected (they use dialog-returned paths which are scoped automatically by Tauri)
 
             ---
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).

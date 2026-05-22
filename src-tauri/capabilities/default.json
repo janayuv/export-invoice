@@ -12,6 +12,7 @@
     "fs:default",
     "fs:write-all",
     "fs:read-all",
+    "fs:scope-appconfig-recursive",
     "dialog:default",
     "dialog:allow-save",
     "dialog:allow-open",
