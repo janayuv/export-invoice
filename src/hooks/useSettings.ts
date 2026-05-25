@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import type { CompanySettings } from "@/lib/types";
 
@@ -28,41 +29,29 @@ export function useSettings() {
   }, [load]);
 
   async function saveSettings(data: Partial<CompanySettings>) {
-    const db = await getDb();
-    await db.execute(
-      `UPDATE company_settings SET
-        name=$1, address=$2, gstin=$3, pan=$4, iec=$5,
-        bank_name=$6, bank_account=$7, ifsc=$8, swift=$9,
-        bank_ad_code=$10, lut_arn_no=$11, lut_arn_date=$12,
-        place=$13, signatory_name=$14,
-        updated_at=datetime('now')
-       WHERE id=1`,
-      [
-        data.name ?? "",
-        data.address ?? "",
-        data.gstin ?? "",
-        data.pan ?? "",
-        data.iec ?? "",
-        data.bank_name ?? "",
-        data.bank_account ?? "",
-        data.ifsc ?? "",
-        data.swift ?? "",
-        data.bank_ad_code ?? "",
-        data.lut_arn_no ?? "",
-        data.lut_arn_date ?? "",
-        data.place ?? "",
-        data.signatory_name ?? "",
-      ]
-    );
+    await invoke("save_company_settings", {
+      payload: {
+        name: data.name ?? "",
+        address: data.address ?? "",
+        gstin: data.gstin ?? "",
+        pan: data.pan ?? "",
+        iec: data.iec ?? "",
+        bank_name: data.bank_name ?? "",
+        bank_account: data.bank_account ?? "",
+        ifsc: data.ifsc ?? "",
+        swift: data.swift ?? "",
+        bank_ad_code: data.bank_ad_code ?? "",
+        lut_arn_no: data.lut_arn_no ?? "",
+        lut_arn_date: data.lut_arn_date ?? "",
+        place: data.place ?? "",
+        signatory_name: data.signatory_name ?? "",
+      },
+    });
     await load();
   }
 
   async function saveLogo(base64: string) {
-    const db = await getDb();
-    await db.execute(
-      `UPDATE company_settings SET company_logo_base64=$1, updated_at=datetime('now') WHERE id=1`,
-      [base64]
-    );
+    await invoke("save_company_logo", { base64 });
     await load();
   }
 
