@@ -409,5 +409,71 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 22,
+            description: "add_customer_name_unique_index",
+            // Enforce case-insensitive name uniqueness at the DB level.
+            // Step 1: deduplicate in place — keep the first (lowest id) occurrence;
+            // append ' (id)' to any later duplicate so the unique index can be created
+            // safely on DBs that already have duplicate names.
+            // Step 2: create the unique index.
+            sql: r#"
+                UPDATE customers
+                SET name = name || ' (' || id || ')'
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM customers GROUP BY LOWER(TRIM(name))
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_ci
+                ON customers(LOWER(TRIM(name)));
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 23,
+            description: "add_login_lockout_to_users",
+            sql: r#"
+                ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE users ADD COLUMN locked_until TEXT DEFAULT NULL;
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 24,
+            description: "create_auth_audit_log",
+            // Append-only table; no UPDATE/DELETE in app flow.
+            // ip_or_source is a fixed tag for desktop ("tauri-main-window").
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS auth_audit_log (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id      INTEGER NULL,
+                    event_type   TEXT    NOT NULL
+                                     CHECK(event_type IN (
+                                         'failed_attempt','locked','unlocked',
+                                         'pin_changed','login_success'
+                                     )),
+                    occurred_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    ip_or_source TEXT    DEFAULT 'tauri-main-window',
+                    details_json TEXT    NOT NULL DEFAULT '{}',
+                    created_by   INTEGER NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_auth_audit_user_time
+                    ON auth_audit_log(user_id, occurred_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_auth_audit_event_time
+                    ON auth_audit_log(event_type, occurred_at DESC);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 25,
+            description: "add_hash_chain_to_auth_audit_log",
+            // prev_hash: entry_hash of the immediately preceding row ('' for first row).
+            // entry_hash: SHA-256(prev_hash|event_type|user_id|occurred_at|details_json).
+            // Existing rows get empty defaults — treated as pre-chain legacy by verify_audit_chain.
+            sql: r#"
+                ALTER TABLE auth_audit_log ADD COLUMN prev_hash  TEXT NOT NULL DEFAULT '';
+                ALTER TABLE auth_audit_log ADD COLUMN entry_hash TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
