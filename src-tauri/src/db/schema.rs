@@ -475,5 +475,24 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 26,
+            description: "create_security_event_log",
+            // Records backend-denied IPC commands. Append-only — never UPDATE/DELETE in app code.
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS security_event_log (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    command     TEXT    NOT NULL,
+                    user_id     INTEGER NULL,
+                    reason      TEXT    NOT NULL,
+                    occurred_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_security_event_time
+                    ON security_event_log(occurred_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_security_event_command
+                    ON security_event_log(command, occurred_at DESC);
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
