@@ -53,11 +53,47 @@ fn validate_pin(pin: &str) -> Result<(), String> {
 
 // ── audit logging ─────────────────────────────────────────────────────────────
 
+fn compute_chain_entry_hash(
+    prev_hash: &str,
+    event_type: &str,
+    user_id: Option<i64>,
+    occurred_at: &str,
+    details_json: &str,
+) -> String {
+    let uid = user_id.map(|id| id.to_string()).unwrap_or_default();
+    let canonical = format!("{}|{}|{}|{}|{}", prev_hash, event_type, uid, occurred_at, details_json);
+    let mut h = Sha256::new();
+    h.update(canonical.as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn log_auth_event(conn: &Connection, user_id: Option<i64>, event_type: &str, details_json: &str) {
+    // Capture timestamp explicitly so the same value goes into the INSERT and the hash payload.
+    let occurred_at: String = conn
+        .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now')", [], |r| r.get(0))
+        .unwrap_or_default();
+
+    // Fetch the most recent entry_hash for chain linking ('' when table is empty).
+    let prev_hash: String = conn
+        .query_row(
+            "SELECT COALESCE(entry_hash,'') FROM auth_audit_log ORDER BY id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+
+    let entry_hash = compute_chain_entry_hash(&prev_hash, event_type, user_id, &occurred_at, details_json);
+
     // Best-effort: a failing audit write must never block authentication.
+    // IMPORTANT: callers must pass details_json as a fixed-format string literal (e.g.
+    // `r#"{"remaining_attempts":4}"#`), never as serde_json::to_string output whose
+    // key order could vary. Hash drift across semantically identical payloads breaks
+    // chain verification even without actual tampering.
     let _ = conn.execute(
-        "INSERT INTO auth_audit_log (user_id, event_type, details_json) VALUES (?1, ?2, ?3)",
-        rusqlite::params![user_id, event_type, details_json],
+        "INSERT INTO auth_audit_log \
+         (user_id, event_type, details_json, occurred_at, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![user_id, event_type, details_json, occurred_at, prev_hash, entry_hash],
     );
 }
 
@@ -856,6 +892,32 @@ pub(crate) mod tests {
             )
             .unwrap();
         assert_eq!(stored_uid, Some(uid));
+    }
+
+    #[test]
+    fn log_auth_event_stores_valid_hash_chain() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_users_table(&conn);
+        setup_audit_log_table(&conn);
+
+        // First event: prev_hash must be empty, entry_hash must be 64 hex chars
+        log_auth_event(&conn, Some(1), "login_success", "{}");
+        let (prev1, hash1): (String, String) = conn.query_row(
+            "SELECT prev_hash, entry_hash FROM auth_audit_log ORDER BY id ASC LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(prev1, "", "first row prev_hash must be empty");
+        assert_eq!(hash1.len(), 64, "entry_hash must be 64-char SHA-256 hex");
+
+        // Second event: prev_hash must equal first row's entry_hash
+        log_auth_event(&conn, Some(1), "pin_changed", "{}");
+        let (prev2, _hash2): (String, String) = conn.query_row(
+            "SELECT prev_hash, entry_hash FROM auth_audit_log ORDER BY id DESC LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(prev2, hash1, "second row prev_hash must equal first row entry_hash");
     }
 
     #[test]
