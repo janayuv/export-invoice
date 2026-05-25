@@ -56,3 +56,49 @@ export async function getDb(): Promise<Database> {
   }
   return _db;
 }
+
+/**
+ * NOT USED — kept for reference only.
+ *
+ * tauri-plugin-sql v2 uses a SQLx connection pool. Each call to
+ * db.execute() / db.select() independently acquires a connection from
+ * the pool and releases it when the await resolves. There is no
+ * connection-affinity guarantee across calls, so BEGIN issued on one
+ * connection may be paired with a COMMIT on a different connection,
+ * producing either SQLITE_BUSY (code 5, "database is locked") or
+ * SQLITE_ERROR (code 1, "cannot commit – no transaction is active").
+ *
+ * True multi-statement atomicity requires a Rust-side Tauri command
+ * that calls pool.begin() and holds the Transaction object across all
+ * writes. The JS hooks below use sequential direct calls instead,
+ * which matches the original pre-Sprint-1 behaviour that worked.
+ */
+export async function withTransaction<T>(
+  _db: Database,
+  fn: () => Promise<T>
+): Promise<T> {
+  // Falls through to a direct call — no BEGIN/COMMIT wrapper.
+  return fn();
+}
+
+/**
+ * Verifies that columns added by migrations 15–17 are present.
+ * Logs errors to the console — does not block the UI.
+ * Call once at app startup.
+ */
+export async function validateSchema(): Promise<void> {
+  const db = await getDb();
+  const checks: [string, string][] = [
+    ["invoice_items", "sa_number"],
+    ["invoices", "show_sa_number"],
+    ["invoices", "packing_list"],
+    ["purchase_orders", "show_sa_number"],
+    ["purchase_order_items", "sa_number"],
+  ];
+  for (const [table, col] of checks) {
+    const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(${table})`);
+    if (!cols.some((c) => c.name === col)) {
+      console.error(`Schema guard: column ${table}.${col} missing — migrations may not have run.`);
+    }
+  }
+}
