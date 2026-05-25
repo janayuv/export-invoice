@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import type { Entry, EntryFormValues, EntryItem } from "@/lib/types";
 
@@ -65,7 +66,11 @@ export async function getEntry(id: number): Promise<Entry | null> {
   return entry;
 }
 
-/** All entries with their line-item snapshots parsed, for the report view. */
+/**
+ * All entries with their line-item snapshots parsed, for the report view.
+ * This is a snapshot-based report: it reads denormalized fields from the entries
+ * table — not a live join against invoices or purchase_orders.
+ */
 export async function getEntriesReport(): Promise<Entry[]> {
   const db = await getDb();
   const rows = await db.select<Entry[]>(
@@ -105,62 +110,70 @@ export async function getInvoicesByCustomerId(
   );
 }
 
+// ── Write commands — all validation and RBAC now live in Rust ─────────────────
+
 export async function createEntry(
   data: EntryFormValues,
   createdBy?: number
 ): Promise<number> {
-  const db = await getDb();
-  const result = await db.execute(
-    `INSERT INTO entries (
-      customer_id, invoice_id, purchase_order_id, customer_name, customer_address,
-      invoice_number, invoice_date, po_number, po_date, customer_po_no,
-      currency, exchange_rate, invoice_total, items,
-      local_invoice_no, local_invoice_date,
-      shipping_bill_no, shipping_bill_date, bl_awb_no, bl_awb_date,
-      status, created_by
-    ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
-    )`,
-    [
-      data.customer_id, data.invoice_id, data.purchase_order_id,
-      data.customer_name, data.customer_address, data.invoice_number,
-      data.invoice_date, data.po_number, data.po_date, data.customer_po_no,
-      data.currency, data.exchange_rate, data.invoice_total,
-      JSON.stringify(data.items ?? []), data.local_invoice_no,
-      data.local_invoice_date, data.shipping_bill_no, data.shipping_bill_date,
-      data.bl_awb_no, data.bl_awb_date, data.status, createdBy ?? null,
-    ]
-  );
-  return result.lastInsertId ?? 0;
+  return invoke<number>("create_entry", {
+    payload: {
+      customer_id:        data.customer_id,
+      invoice_id:         data.invoice_id,
+      purchase_order_id:  data.purchase_order_id,
+      customer_name:      data.customer_name,
+      customer_address:   data.customer_address,
+      invoice_number:     data.invoice_number,
+      invoice_date:       data.invoice_date,
+      po_number:          data.po_number,
+      po_date:            data.po_date,
+      customer_po_no:     data.customer_po_no,
+      currency:           data.currency,
+      exchange_rate:      data.exchange_rate,
+      items:              data.items,
+      local_invoice_no:   data.local_invoice_no,
+      local_invoice_date: data.local_invoice_date,
+      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_date: data.shipping_bill_date,
+      bl_awb_no:          data.bl_awb_no,
+      bl_awb_date:        data.bl_awb_date,
+      status:             data.status,
+    },
+    createdBy: createdBy ?? null,
+  });
 }
 
 export async function updateEntry(
   id: number,
   data: EntryFormValues
 ): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    `UPDATE entries SET
-      customer_id=$1, invoice_id=$2, purchase_order_id=$3, customer_name=$4,
-      customer_address=$5, invoice_number=$6, invoice_date=$7, po_number=$8,
-      po_date=$9, customer_po_no=$10, currency=$11, exchange_rate=$12,
-      invoice_total=$13, items=$14, local_invoice_no=$15, local_invoice_date=$16,
-      shipping_bill_no=$17, shipping_bill_date=$18, bl_awb_no=$19, bl_awb_date=$20,
-      status=$21, updated_at=datetime('now')
-     WHERE id=$22`,
-    [
-      data.customer_id, data.invoice_id, data.purchase_order_id,
-      data.customer_name, data.customer_address, data.invoice_number,
-      data.invoice_date, data.po_number, data.po_date, data.customer_po_no,
-      data.currency, data.exchange_rate, data.invoice_total,
-      JSON.stringify(data.items ?? []), data.local_invoice_no,
-      data.local_invoice_date, data.shipping_bill_no, data.shipping_bill_date,
-      data.bl_awb_no, data.bl_awb_date, data.status, id,
-    ]
-  );
+  await invoke("update_entry", {
+    id,
+    payload: {
+      customer_id:        data.customer_id,
+      invoice_id:         data.invoice_id,
+      purchase_order_id:  data.purchase_order_id,
+      customer_name:      data.customer_name,
+      customer_address:   data.customer_address,
+      invoice_number:     data.invoice_number,
+      invoice_date:       data.invoice_date,
+      po_number:          data.po_number,
+      po_date:            data.po_date,
+      customer_po_no:     data.customer_po_no,
+      currency:           data.currency,
+      exchange_rate:      data.exchange_rate,
+      items:              data.items,
+      local_invoice_no:   data.local_invoice_no,
+      local_invoice_date: data.local_invoice_date,
+      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_date: data.shipping_bill_date,
+      bl_awb_no:          data.bl_awb_no,
+      bl_awb_date:        data.bl_awb_date,
+      status:             data.status,
+    },
+  });
 }
 
 export async function deleteEntry(id: number): Promise<void> {
-  const db = await getDb();
-  await db.execute("DELETE FROM entries WHERE id = ?", [id]);
+  await invoke("delete_entry", { id });
 }
