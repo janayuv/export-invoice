@@ -97,6 +97,22 @@ fn log_auth_event(conn: &Connection, user_id: Option<i64>, event_type: &str, det
     );
 }
 
+// ── security event logging ────────────────────────────────────────────────────
+
+/// Log a permission-denied event for admin security diagnostics.
+/// Best-effort — errors are silently dropped so they never block the command path.
+pub(crate) fn log_security_event(
+    conn: &Connection,
+    command: &str,
+    user_id: Option<i64>,
+    reason: &str,
+) {
+    let _ = conn.execute(
+        "INSERT INTO security_event_log (command, user_id, reason) VALUES (?1, ?2, ?3)",
+        rusqlite::params![command, user_id, reason],
+    );
+}
+
 // ── serializable user record ──────────────────────────────────────────────────
 
 #[derive(Debug, serde::Serialize)]
@@ -378,6 +394,39 @@ pub struct AuthTelemetry {
     pub pin_changes:     i64,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct AuthTelemetrySummary {
+    pub window_1h:  AuthTelemetry,
+    pub window_24h: AuthTelemetry,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct UserAuthTrend {
+    pub user_id:             i64,
+    pub user_name:           String,
+    pub role:                String,
+    pub failed_24h:          i64,
+    pub lockouts_24h:        i64,
+    pub login_successes_24h: i64,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ChainVerifyResult {
+    pub is_valid:        bool,
+    pub total_rows:      i64,
+    pub hashed_rows:     i64,
+    pub first_broken_id: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SecurityEvent {
+    pub id:          i64,
+    pub command:     String,
+    pub user_id:     Option<i64>,
+    pub reason:      String,
+    pub occurred_at: String,
+}
+
 fn logic_get_auth_audit_log(
     conn: &Connection,
     limit: Option<i64>,
@@ -436,6 +485,133 @@ fn logic_get_auth_telemetry_window(
     .map_err(|e| e.to_string())
 }
 
+fn logic_verify_audit_chain(conn: &Connection) -> Result<ChainVerifyResult, String> {
+    struct AuditRow {
+        id: i64, user_id: Option<i64>, event_type: String,
+        occurred_at: String, details_json: String,
+        prev_hash: String, entry_hash: String,
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, event_type, occurred_at, details_json, prev_hash, entry_hash \
+         FROM auth_audit_log ORDER BY id ASC",
+    ).map_err(|e| e.to_string())?;
+
+    let rows: Vec<AuditRow> = stmt.query_map([], |row| {
+        Ok(AuditRow {
+            id:           row.get(0)?,
+            user_id:      row.get(1)?,
+            event_type:   row.get(2)?,
+            occurred_at:  row.get(3)?,
+            details_json: row.get(4)?,
+            prev_hash:    row.get(5)?,
+            entry_hash:   row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+
+    let total_rows = rows.len() as i64;
+    let mut expected_prev = String::new();
+    let mut hashed_rows: i64 = 0;
+
+    for row in &rows {
+        if row.entry_hash.is_empty() {
+            // Legacy pre-chain row — skip hash validation, do not update expected_prev
+            continue;
+        }
+        hashed_rows += 1;
+        if row.prev_hash != expected_prev {
+            return Ok(ChainVerifyResult {
+                is_valid: false, total_rows, hashed_rows,
+                first_broken_id: Some(row.id),
+            });
+        }
+        let expected = compute_chain_entry_hash(
+            &row.prev_hash, &row.event_type, row.user_id, &row.occurred_at, &row.details_json,
+        );
+        if expected != row.entry_hash {
+            return Ok(ChainVerifyResult {
+                is_valid: false, total_rows, hashed_rows,
+                first_broken_id: Some(row.id),
+            });
+        }
+        expected_prev = row.entry_hash.clone();
+    }
+
+    // NOTE: hashed_rows will be < total_rows on databases that ran migration 24 before
+    // migration 25 shipped — those legacy rows have entry_hash='' and are intentionally
+    // skipped. Chain verification only covers the post-migration hashed rows.
+    Ok(ChainVerifyResult { is_valid: true, total_rows, hashed_rows, first_broken_id: None })
+}
+
+fn logic_get_auth_telemetry_summary(conn: &Connection) -> Result<AuthTelemetrySummary, String> {
+    Ok(AuthTelemetrySummary {
+        window_1h:  logic_get_auth_telemetry_window(conn, 1)?,
+        window_24h: logic_get_auth_telemetry_window(conn, 24)?,
+    })
+}
+
+fn logic_get_user_auth_trends(conn: &Connection) -> Result<Vec<UserAuthTrend>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT u.id, u.name, u.role,
+                    COALESCE(SUM(CASE WHEN a.event_type='failed_attempt'
+                        AND a.occurred_at >= datetime('now','-24 hours') THEN 1 END), 0),
+                    COALESCE(SUM(CASE WHEN a.event_type='locked'
+                        AND a.occurred_at >= datetime('now','-24 hours') THEN 1 END), 0),
+                    COALESCE(SUM(CASE WHEN a.event_type='login_success'
+                        AND a.occurred_at >= datetime('now','-24 hours') THEN 1 END), 0)
+             FROM users u
+             LEFT JOIN auth_audit_log a ON a.user_id = u.id
+             GROUP BY u.id
+             ORDER BY 4 DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok(UserAuthTrend {
+            user_id:             row.get(0)?,
+            user_name:           row.get(1)?,
+            role:                row.get(2)?,
+            failed_24h:          row.get(3)?,
+            lockouts_24h:        row.get(4)?,
+            login_successes_24h: row.get(5)?,
+        })
+    })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+fn logic_get_security_events(
+    conn: &Connection,
+    limit: Option<i64>,
+) -> Result<Vec<SecurityEvent>, String> {
+    let lim = limit.unwrap_or(100);
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, command, user_id, reason, occurred_at \
+             FROM security_event_log \
+             ORDER BY occurred_at DESC, id DESC \
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([lim], |row| {
+        Ok(SecurityEvent {
+            id:          row.get(0)?,
+            command:     row.get(1)?,
+            user_id:     row.get(2)?,
+            reason:      row.get(3)?,
+            occurred_at: row.get(4)?,
+        })
+    })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
 #[tauri::command]
 pub fn get_auth_audit_log(
     db: State<'_, AppDb>,
@@ -451,6 +627,50 @@ pub fn get_auth_telemetry_window(
     hours: i64,
 ) -> Result<AuthTelemetry, String> {
     db.with_conn(|conn| logic_get_auth_telemetry_window(conn, hours))
+}
+
+#[tauri::command]
+pub fn verify_audit_chain(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+) -> Result<ChainVerifyResult, String> {
+    let sess = session.get()?;
+    if sess.role != "admin" {
+        return Err("Permission denied: verify_audit_chain requires admin role".into());
+    }
+    db.with_conn(logic_verify_audit_chain)
+}
+
+#[tauri::command]
+pub fn get_auth_telemetry_summary(
+    db: State<'_, AppDb>,
+) -> Result<AuthTelemetrySummary, String> {
+    db.with_conn(logic_get_auth_telemetry_summary)
+}
+
+#[tauri::command]
+pub fn get_user_auth_trends(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+) -> Result<Vec<UserAuthTrend>, String> {
+    let sess = session.get()?;
+    if sess.role != "admin" {
+        return Err("Permission denied: get_user_auth_trends requires admin role".into());
+    }
+    db.with_conn(logic_get_user_auth_trends)
+}
+
+#[tauri::command]
+pub fn get_security_events(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+    limit: Option<i64>,
+) -> Result<Vec<SecurityEvent>, String> {
+    let sess = session.get()?;
+    if sess.role != "admin" {
+        return Err("Permission denied: get_security_events requires admin role".into());
+    }
+    db.with_conn(|conn| logic_get_security_events(conn, limit))
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -892,6 +1112,135 @@ pub(crate) mod tests {
             )
             .unwrap();
         assert_eq!(stored_uid, Some(uid));
+    }
+
+    #[test]
+    fn verify_chain_passes_on_intact_log() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_users_table(&conn);
+        setup_audit_log_table(&conn);
+
+        log_auth_event(&conn, Some(1), "login_success", "{}");
+        log_auth_event(&conn, Some(1), "pin_changed", "{}");
+        log_auth_event(&conn, None, "failed_attempt", r#"{"remaining_attempts":5}"#);
+
+        let result = logic_verify_audit_chain(&conn).unwrap();
+        assert!(result.is_valid, "intact chain should be valid");
+        assert_eq!(result.hashed_rows, 3);
+        assert!(result.first_broken_id.is_none());
+    }
+
+    #[test]
+    fn verify_chain_detects_tampered_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_users_table(&conn);
+        setup_audit_log_table(&conn);
+
+        log_auth_event(&conn, Some(1), "login_success", "{}");
+        log_auth_event(&conn, Some(1), "pin_changed", "{}");
+
+        // Simulate a tamper: overwrite the first row's entry_hash
+        conn.execute(
+            "UPDATE auth_audit_log SET entry_hash='deadbeef' WHERE id=1",
+            [],
+        ).unwrap();
+
+        let result = logic_verify_audit_chain(&conn).unwrap();
+        assert!(!result.is_valid, "tampered chain should be invalid");
+        assert!(result.first_broken_id.is_some());
+    }
+
+    #[test]
+    fn log_security_event_inserts_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE security_event_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command TEXT NOT NULL,
+                user_id INTEGER NULL,
+                reason TEXT NOT NULL,
+                occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        ).unwrap();
+
+        log_security_event(&conn, "create_invoice", Some(7),
+            "Permission denied: create_invoice requires admin or operator role");
+
+        let (cmd, uid, reason): (String, Option<i64>, String) = conn.query_row(
+            "SELECT command, user_id, reason FROM security_event_log LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!(cmd, "create_invoice");
+        assert_eq!(uid, Some(7));
+        assert!(reason.contains("Permission denied"));
+    }
+
+    fn setup_security_event_log_table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE security_event_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command TEXT NOT NULL,
+                user_id INTEGER NULL,
+                reason TEXT NOT NULL,
+                occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        ).unwrap();
+    }
+
+    #[test]
+    fn get_security_events_returns_recent_denials() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_security_event_log_table(&conn);
+        log_security_event(&conn, "delete_invoice", Some(3), "Permission denied: admin only");
+        log_security_event(&conn, "finalize_invoice", Some(5), "Permission denied: admin only");
+
+        let events = logic_get_security_events(&conn, Some(10)).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].command, "finalize_invoice"); // DESC order
+    }
+
+    #[test]
+    fn telemetry_summary_returns_both_windows() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_audit_log_table(&conn);
+        conn.execute_batch(
+            "INSERT INTO auth_audit_log (event_type, prev_hash, entry_hash) \
+             VALUES ('failed_attempt','','');
+             INSERT INTO auth_audit_log (event_type, prev_hash, entry_hash) \
+             VALUES ('locked','','');",
+        ).unwrap();
+
+        let summary = logic_get_auth_telemetry_summary(&conn).unwrap();
+        assert_eq!(summary.window_1h.failed_attempts, 1);
+        assert_eq!(summary.window_24h.failed_attempts, 1);
+        assert_eq!(summary.window_1h.lock_events, 1);
+    }
+
+    #[test]
+    fn user_auth_trends_groups_by_user() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_users_table(&conn);
+        setup_audit_log_table(&conn);
+        logic_create_user(&conn, "Alice", "1111", "admin").unwrap();
+        let uid: i64 = conn
+            .query_row("SELECT id FROM users WHERE name='Alice'", [], |r| r.get(0))
+            .unwrap();
+
+        conn.execute(
+            "INSERT INTO auth_audit_log (user_id, event_type, prev_hash, entry_hash) \
+             VALUES (?1,'failed_attempt','','');",
+            [uid],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO auth_audit_log (user_id, event_type, prev_hash, entry_hash) \
+             VALUES (?1,'failed_attempt','','');",
+            [uid],
+        ).unwrap();
+
+        let trends = logic_get_user_auth_trends(&conn).unwrap();
+        let alice = trends.iter().find(|t| t.user_name == "Alice").unwrap();
+        assert_eq!(alice.failed_24h, 2);
     }
 
     #[test]
