@@ -32,7 +32,7 @@ function newRowDefaults(srNo: number) {
 }
 
 export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolean }) {
-  const { control, register, setValue, getValues, formState: { errors } } = useFormContext<InvoiceFormSchema>();
+  const { control, register, setValue, formState: { errors } } = useFormContext<InvoiceFormSchema>();
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const incoterm = useWatch({ control, name: "incoterm" });
   const currency = useWatch({ control, name: "currency" });
@@ -69,7 +69,6 @@ export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolea
                 register={register}
                 control={control}
                 setValue={setValue}
-                getValues={getValues}
                 showSaNumber={showSaNumber}
               />
             ))}
@@ -154,7 +153,6 @@ function GoodsRow({
   register,
   control,
   setValue,
-  getValues,
   showSaNumber,
 }: {
   index: number;
@@ -163,24 +161,13 @@ function GoodsRow({
   register: ReturnType<typeof useFormContext<InvoiceFormSchema>>["register"];
   control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
   setValue: ReturnType<typeof useFormContext<InvoiceFormSchema>>["setValue"];
-  getValues: ReturnType<typeof useFormContext<InvoiceFormSchema>>["getValues"];
   showSaNumber: boolean;
 }) {
   // Only subscribe to `included` — the checkbox flag that dims the row.
-  // qty/price no longer live here; total is computed on demand in onChange
-  // and displayed by RowTotal (a separate child component). This means
-  // GoodsRow itself never re-renders while the user types, so Base UI's
-  // InputPrimitive cannot reset the display value between keystrokes.
+  // qty/price are uncontrolled inputs; totals are computed in RowTotal via
+  // useWatch so no setValue is called during typing, preventing re-renders
+  // that would reset the input value between keystrokes.
   const included = useWatch({ control, name: `items.${index}.included` });
-
-  // Called by register's onChange option for both qty and price inputs.
-  // RHF's internal handler (valueAsNumber store update) runs first, so
-  // getValues() already holds the new value when this fires.
-  const updateTotal = () => {
-    const qty   = Number(getValues(`items.${index}.quantity`))   || 0;
-    const price = Number(getValues(`items.${index}.unit_price`)) || 0;
-    setValue(`items.${index}.total_amount`, qty * price, { shouldValidate: false });
-  };
 
   return (
     <tr className={`border-b border-border last:border-b-0 transition-opacity ${included === false ? "opacity-40" : ""}`}>
@@ -218,7 +205,7 @@ function GoodsRow({
           className="w-20 h-8 text-xs text-right"
           type="number"
           step="0.001"
-          {...register(`items.${index}.quantity`, { valueAsNumber: true, onChange: updateTotal })}
+          {...register(`items.${index}.quantity`, { valueAsNumber: true })}
         />
       </Td>
       <Td>
@@ -229,7 +216,7 @@ function GoodsRow({
           className="w-24 h-8 text-xs text-right"
           type="number"
           step="0.001"
-          {...register(`items.${index}.unit_price`, { valueAsNumber: true, onChange: updateTotal })}
+          {...register(`items.${index}.unit_price`, { valueAsNumber: true })}
         />
       </Td>
       {/* RowTotal is a separate component so only it re-renders when total_amount
@@ -262,10 +249,12 @@ function RowTotal({
   control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
   index: number;
 }) {
-  const total = useWatch({ control, name: `items.${index}.total_amount` });
+  const qty   = useWatch({ control, name: `items.${index}.quantity` });
+  const price = useWatch({ control, name: `items.${index}.unit_price` });
+  const total = (Number(qty) || 0) * (Number(price) || 0);
   return (
     <>
-      {(Number(total) || 0).toLocaleString("en-US", {
+      {total.toLocaleString("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}
@@ -346,7 +335,7 @@ function GoodsTotalsFooter({ control, showSaNumber }: { control: ReturnType<type
 
   const includedItems = items?.filter((i) => i.included !== false) ?? [];
   const totalQty = includedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-  const totalAmt = includedItems.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
+  const totalAmt = includedItems.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
 
   return (
     <tr className="bg-muted/50 font-semibold text-sm text-foreground">

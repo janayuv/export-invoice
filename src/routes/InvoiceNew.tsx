@@ -366,7 +366,11 @@ export function InvoiceNew() {
   async function onSubmit(data: InvoiceFormSchema, finalize = false) {
     const includedItems = data.items
       .filter((item) => item.included !== false)
-      .map((item, i) => ({ ...item, sr_no: i + 1 }));
+      .map((item, i) => ({
+        ...item,
+        sr_no: i + 1,
+        total_amount: Number((item.quantity * item.unit_price).toFixed(2)),
+      }));
 
     if (includedItems.length === 0) {
       toast.error("At least one item must be included");

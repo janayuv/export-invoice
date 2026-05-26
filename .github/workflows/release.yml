@@ -59,10 +59,10 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            ### Bug fix — Database File picker (Settings)
-            - Fixed a **"forbidden path"** runtime error that prevented the Browse button from writing or clearing `selected_db.txt` in the app config directory
-            - Root cause: the Tauri capability granted the `write_text_file`/`remove`/`exists` commands but no path scope for `%APPDATA%\com.exportinvoice.app`; added `fs:scope-appconfig-recursive` to resolve it
-            - Export / PDF / Excel save flows are unaffected (they use dialog-returned paths which are scoped automatically by Tauri)
+            ### Bug fix — Invoice qty field resets after selecting a Purchase Order
+            - Fixed a regression where typing in the **Qty** (or Unit Price) field on the invoice form would reset the input after every digit, but only after a Purchase Order had been selected
+            - Root cause: `updateTotal` called `setValue('total_amount', …)` on each keystroke, which notified `useFieldArray`'s items subscriber and caused `GoodsRow` to re-render, re-attaching the RHF ref and overwriting the partial input value
+            - Fix: removed reactive `total_amount` maintenance from the onChange handler; row totals and footer totals now compute live from `qty × unit_price` via `useWatch`; `total_amount` is recomputed at submit time before saving
 
             ---
             Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
