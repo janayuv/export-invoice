@@ -33,9 +33,9 @@ pub fn logic_save_company_settings(
             conn,
             "save_company_settings",
             session_user_id,
-            "Permission denied: save_company_settings requires admin role",
+            "ERR_PERMISSION: save_company_settings requires admin role",
         );
-        return Err("Permission denied: save_company_settings requires admin role".into());
+        return Err("ERR_PERMISSION: save_company_settings requires admin role".into());
     }
 
     conn.execute(
@@ -78,9 +78,9 @@ pub fn logic_save_company_logo(
             conn,
             "save_company_logo",
             session_user_id,
-            "Permission denied: save_company_logo requires admin role",
+            "ERR_PERMISSION: save_company_logo requires admin role",
         );
-        return Err("Permission denied: save_company_logo requires admin role".into());
+        return Err("ERR_PERMISSION: save_company_logo requires admin role".into());
     }
 
     conn.execute(
@@ -180,7 +180,7 @@ mod tests {
         let conn = create_test_db();
         let err =
             logic_save_company_settings(&conn, &minimal_payload(), "operator", None).unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
@@ -188,7 +188,7 @@ mod tests {
         let conn = create_test_db();
         let err =
             logic_save_company_settings(&conn, &minimal_payload(), "viewer", None).unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
         let conn = create_test_db();
         let err = logic_save_company_logo(&conn, "data:image/png;base64,abc", "operator", None)
             .unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         let conn = create_test_db();
         let err =
             logic_save_company_logo(&conn, "data:image/png;base64,abc", "viewer", None).unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]

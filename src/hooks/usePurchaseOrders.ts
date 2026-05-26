@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 
 export interface POItem {
@@ -42,6 +43,7 @@ export interface PurchaseOrder {
   exchange_rate: number;
   notes: string;
   status: "draft" | "confirmed" | "closed";
+  row_version: number;
   show_sa_number: boolean;
   created_by: number | null;
   created_at: string;
@@ -50,7 +52,7 @@ export interface PurchaseOrder {
 
 export type POFormValues = Omit<
   PurchaseOrder,
-  "id" | "created_at" | "items"
+  "id" | "row_version" | "created_at" | "items"
 > & { items: POItem[] };
 
 /** Trim text fields and recompute line totals without altering qty/unit/price values. */
@@ -89,22 +91,16 @@ function getFiscalYear(date: Date) {
   return { fyStart, fyLabel: `${fyStart}-${String(fyEnd).slice(-2)}` };
 }
 
-export async function generatePONumber(date?: Date): Promise<string> {
+// Read-only preview — no DB write. Used by the form to display the likely next number.
+export async function previewPONumber(date?: Date): Promise<string> {
   const db = await getDb();
   const { fyStart, fyLabel } = getFiscalYear(date ?? new Date());
-  await db.execute(
-    "INSERT OR IGNORE INTO po_sequence (year, last_number) VALUES (?, 0)",
-    [fyStart]
-  );
-  await db.execute(
-    "UPDATE po_sequence SET last_number = last_number + 1 WHERE year = ?",
-    [fyStart]
-  );
   const rows = await db.select<{ last_number: number }[]>(
     "SELECT last_number FROM po_sequence WHERE year = ?",
     [fyStart]
   );
-  return `PO/${rows[0].last_number}/${fyLabel}`;
+  const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
+  return `PO/${next}/${fyLabel}`;
 }
 
 export function usePurchaseOrders() {
@@ -163,93 +159,24 @@ export async function getPurchaseOrdersByCustomerId(
   );
 }
 
-export async function createPurchaseOrder(
-  data: POFormValues,
-  createdBy?: number
-): Promise<number> {
+export async function createPurchaseOrder(data: POFormValues): Promise<number> {
   const payload = normalizePOFormValues(data);
-  const db = await getDb();
-  const result = await db.execute(
-    // port_of_discharge + final_destination added in migration 19.
-    `INSERT INTO purchase_orders (
-      po_number, po_date, customer_id, customer_name, customer_address,
-      customer_po_no, delivery_date, delivery_address,
-      port_of_discharge, final_destination,
-      payment_terms, currency, exchange_rate, notes, status, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [
-      payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
-      payload.customer_address, payload.customer_po_no, payload.delivery_date,
-      payload.delivery_address, payload.port_of_discharge, payload.final_destination,
-      payload.payment_terms, payload.currency,
-      payload.exchange_rate, payload.notes, payload.status, createdBy ?? null,
-    ]
-  );
-  const poId = result.lastInsertId ?? 0;
-  for (const item of payload.items) {
-    await db.execute(
-      `INSERT INTO purchase_order_items (
-        po_id, sr_no, part_number, sa_number, description, quantity, unit, unit_price, total_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [poId, item.sr_no, item.part_number, item.sa_number, item.description,
-       item.quantity, item.unit, item.unit_price, item.total_amount]
-    );
-  }
-  return poId;
+  return invoke<number>("create_purchase_order", { payload });
 }
 
-export async function updatePurchaseOrder(
-  id: number,
-  data: POFormValues
-): Promise<void> {
+export async function updatePurchaseOrder(id: number, data: POFormValues, expectedRowVersion: number): Promise<void> {
   const payload = normalizePOFormValues(data);
-  const db = await getDb();
-  await db.execute(
-    // port_of_discharge + final_destination added in migration 19.
-    `UPDATE purchase_orders SET
-      po_number=$1, po_date=$2, customer_id=$3, customer_name=$4,
-      customer_address=$5, customer_po_no=$6, delivery_date=$7,
-      delivery_address=$8, port_of_discharge=$9, final_destination=$10,
-      payment_terms=$11, currency=$12,
-      exchange_rate=$13, notes=$14, status=$15, updated_at=datetime('now')
-    WHERE id=$16`,
-    [
-      payload.po_number, payload.po_date, payload.customer_id, payload.customer_name,
-      payload.customer_address, payload.customer_po_no, payload.delivery_date,
-      payload.delivery_address, payload.port_of_discharge, payload.final_destination,
-      payload.payment_terms, payload.currency,
-      payload.exchange_rate, payload.notes, payload.status, id,
-    ]
-  );
-  await db.execute("DELETE FROM purchase_order_items WHERE po_id = ?", [id]);
-  for (const item of payload.items) {
-    await db.execute(
-      `INSERT INTO purchase_order_items (
-        po_id, sr_no, part_number, sa_number, description, quantity, unit, unit_price, total_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [id, item.sr_no, item.part_number, item.sa_number, item.description,
-       item.quantity, item.unit, item.unit_price, item.total_amount]
-    );
-  }
+  await invoke("update_purchase_order", { id, expectedRowVersion, payload });
 }
 
 export async function deletePurchaseOrder(id: number): Promise<void> {
-  const db = await getDb();
-  await db.execute("DELETE FROM purchase_orders WHERE id = ?", [id]);
+  await invoke("delete_purchase_order", { id });
 }
 
 export async function confirmPO(id: number): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    "UPDATE purchase_orders SET status='confirmed', updated_at=datetime('now') WHERE id = ?",
-    [id]
-  );
+  await invoke("set_po_status", { id, newStatus: "confirmed" });
 }
 
 export async function closePO(id: number): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    "UPDATE purchase_orders SET status='closed', updated_at=datetime('now') WHERE id = ?",
-    [id]
-  );
+  await invoke("set_po_status", { id, newStatus: "closed" });
 }

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 
 export type UserRole = "admin" | "operator" | "viewer";
@@ -8,24 +9,24 @@ export interface User {
   role: UserRole;
   is_active: number;
   created_at: string;
+  pin_hash_kind?: "argon2" | "legacy-sha256";
 }
 
 export interface UserWithHash extends User {
   pin_hash: string;
 }
 
-export async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export async function getUsers(): Promise<User[]> {
   const db = await getDb();
   return db.select<User[]>(
-    "SELECT id, name, role, is_active, created_at FROM users ORDER BY id"
+    `SELECT
+      id, name, role, is_active, created_at,
+      CASE
+        WHEN pin_hash LIKE '$argon2%' THEN 'argon2'
+        ELSE 'legacy-sha256'
+      END AS pin_hash_kind
+     FROM users
+     ORDER BY id`
   );
 }
 
@@ -36,49 +37,44 @@ export async function getActiveUsers(): Promise<User[]> {
   );
 }
 
-export async function verifyPin(userId: number, pin: string): Promise<User | null> {
-  const db = await getDb();
-  const hash = await hashPin(pin);
-  const rows = await db.select<User[]>(
-    "SELECT id, name, role, is_active, created_at FROM users WHERE id=? AND pin_hash=? AND is_active=1",
-    [userId, hash]
-  );
-  return rows[0] ?? null;
+export type VerifyPinResult =
+  | { status: "success"; user: User }
+  | { status: "failed"; remaining_attempts: number }
+  | { status: "locked"; until: string };
+
+/**
+ * Verifies the PIN via Rust (Argon2id). Returns a discriminated union:
+ * success → user record, failed → attempts remaining, locked → lockout expiry.
+ */
+export async function verifyPin(userId: number, pin: string): Promise<VerifyPinResult> {
+  return invoke<VerifyPinResult>("verify_pin", { userId, pin });
 }
 
+/** Creates a new user; PIN is hashed with Argon2id in Rust. */
 export async function createUser(
   name: string,
   pin: string,
   role: UserRole
 ): Promise<void> {
-  const db = await getDb();
-  const hash = await hashPin(pin);
-  await db.execute(
-    "INSERT INTO users (name, pin_hash, role) VALUES (?, ?, ?)",
-    [name.trim(), hash, role]
-  );
+  await invoke("create_user_pin", { name, pin, role });
 }
 
 export async function updateUser(
   id: number,
   name: string,
   role: UserRole,
-  isActive: boolean
+  isActive: boolean,
 ): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    "UPDATE users SET name=?, role=?, is_active=?, updated_at=datetime('now') WHERE id=?",
-    [name.trim(), role, isActive ? 1 : 0, id]
-  );
+  await invoke("update_user_info", { id, name, role, isActive });
 }
 
+export async function logout(): Promise<void> {
+  await invoke("logout");
+}
+
+/** Replaces the user's PIN with a fresh Argon2id hash in Rust. */
 export async function changePin(id: number, newPin: string): Promise<void> {
-  const db = await getDb();
-  const hash = await hashPin(newPin);
-  await db.execute(
-    "UPDATE users SET pin_hash=?, updated_at=datetime('now') WHERE id=?",
-    [hash, id]
-  );
+  await invoke("change_pin", { userId: id, newPin });
 }
 
 export async function userCount(): Promise<number> {
@@ -124,4 +120,34 @@ export function canEditPurchaseOrderByStatus(
   if (status === "draft") return hasPermission(role, "edit_invoice");
   if (status === "confirmed") return hasPermission(role, "edit_confirmed_po");
   return false;
+}
+
+export interface AuthAuditEntry {
+  id: number;
+  user_id: number | null;
+  event_type: "failed_attempt" | "locked" | "unlocked" | "pin_changed" | "login_success";
+  occurred_at: string;
+  details_json: string;
+}
+
+export interface AuthTelemetry {
+  failed_attempts: number;
+  lock_events: number;
+  unlock_events: number;
+  login_successes: number;
+  pin_changes: number;
+}
+
+export async function getAuthAuditLog(
+  limit?: number,
+  userId?: number,
+): Promise<AuthAuditEntry[]> {
+  return invoke<AuthAuditEntry[]>("get_auth_audit_log", {
+    limit: limit ?? null,
+    userId: userId ?? null,
+  });
+}
+
+export async function getAuthTelemetryWindow(hours = 24): Promise<AuthTelemetry> {
+  return invoke<AuthTelemetry>("get_auth_telemetry_window", { hours });
 }

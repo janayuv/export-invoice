@@ -494,5 +494,68 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 27,
+            description: "add_row_version_to_mutable_tables",
+            // Optimistic locking: every update command checks AND increments row_version.
+            // Existing rows get DEFAULT 1; the frontend reads row_version on load and echoes
+            // it back as expected_row_version. A mismatch means another session wrote first.
+            sql: r#"
+                ALTER TABLE invoices        ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE purchase_orders ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE entries         ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
+}
+
+// ── migration regression tests ────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    /// Apply every migration in sequence on a fresh in-memory DB and verify that
+    /// columns added in migrations 24–27 are present.  Catches schema drift early.
+    #[test]
+    fn all_migrations_apply_cleanly() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+
+        for m in super::get_migrations() {
+            conn.execute_batch(m.sql).unwrap_or_else(|e| {
+                panic!("Migration {} ({}) failed: {e}", m.version, m.description)
+            });
+        }
+
+        // Migration 24: auth_audit_log
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(auth_audit_log)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(cols.contains(&"event_type".into()), "auth_audit_log missing event_type");
+        assert!(cols.contains(&"details_json".into()), "auth_audit_log missing details_json");
+
+        // Migration 25: hash chain columns
+        assert!(cols.contains(&"prev_hash".into()), "auth_audit_log missing prev_hash");
+        assert!(cols.contains(&"entry_hash".into()), "auth_audit_log missing entry_hash");
+
+        // Migration 26: security_event_log
+        let sec: Vec<String> = conn
+            .prepare("PRAGMA table_info(security_event_log)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(sec.contains(&"command".into()), "security_event_log missing command");
+        assert!(sec.contains(&"reason".into()),  "security_event_log missing reason");
+
+        // Migration 27: row_version on all mutable tables
+        for table in ["invoices", "purchase_orders", "entries"] {
+            let tc: Vec<String> = conn
+                .prepare(&format!("PRAGMA table_info({table})")).unwrap()
+                .query_map([], |r| r.get::<_, String>(1)).unwrap()
+                .map(|r| r.unwrap()).collect();
+            assert!(tc.contains(&"row_version".into()), "{table} missing row_version");
+        }
+    }
 }

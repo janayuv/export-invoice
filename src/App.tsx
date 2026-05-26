@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { validateSchema } from "@/lib/db";
 import { Layout } from "@/components/layout/Layout";
 import { Dashboard } from "@/routes/Dashboard";
 import { Settings } from "@/routes/Settings";
@@ -40,6 +42,10 @@ function PermissionGuard({
 }
 
 export default function App() {
+  useEffect(() => {
+    validateSchema().catch((e) => console.error("validateSchema failed:", e));
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { open } from "@tauri-apps/plugin-dialog";
-import { Database, FolderOpen, RotateCcw, Save, Upload, X } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { Database, Download, FolderOpen, RotateCcw, Save, Upload, X } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,8 +22,11 @@ import {
 
 export function Settings() {
   const { settings, loading, saveSettings, saveLogo } = useSettings();
+  const { can } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dbPath, setDbPathState] = useState<string | null>(getStoredDbPath());
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const {
     register,
@@ -93,6 +98,48 @@ export function Settings() {
       toast.success("Reverted to default database — restart the app to apply");
     } catch (err) {
       toast.error(`Failed to reset database: ${err}`);
+    }
+  };
+
+  const handleBackup = async () => {
+    try {
+      const destPath = await save({
+        title: "Save Database Backup",
+        defaultPath: "export_invoice_backup.db",
+        filters: [{ name: "SQLite Database", extensions: ["db"] }],
+      });
+      if (!destPath) return; // cancelled
+      setBackingUp(true);
+      await invoke("backup_database", { destPath });
+      toast.success("Backup saved successfully");
+    } catch (err) {
+      toast.error(`Backup failed: ${err}`);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      const sourcePath = await open({
+        title: "Select Backup to Restore",
+        multiple: false,
+        directory: false,
+        filters: [{ name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] }],
+      });
+      if (typeof sourcePath !== "string") return; // cancelled
+      setRestoring(true);
+      await invoke("validate_and_stage_restore", { sourcePath });
+      toast.success("Backup validated — restart the app to complete restore");
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("ERR_INTEGRITY:")) {
+        toast.error("Restore rejected: backup file failed integrity check");
+      } else {
+        toast.error(`Restore failed: ${err}`);
+      }
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -286,6 +333,48 @@ export function Settings() {
           {isSubmitting ? "Saving..." : "Save Settings"}
         </Button>
       </form>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Download size={16} />
+            Data Backup &amp; Restore
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Create a full backup of the active database, or restore from a previous backup.
+            A pre-upgrade backup is also taken automatically each time the app starts.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleBackup}
+              disabled={backingUp || !can("access_settings")}
+            >
+              <Download size={14} className="mr-1" />
+              {backingUp ? "Backing up…" : "Backup Now"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRestore}
+              disabled={restoring || !can("access_settings")}
+            >
+              <FolderOpen size={14} className="mr-1" />
+              {restoring ? "Validating…" : "Restore from Backup"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            After choosing a backup file, the app will validate its integrity then stage the
+            restore. Restart the app to complete. The current database is not overwritten until
+            restart.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

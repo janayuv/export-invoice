@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { formatInvoiceDisplayDate } from "@/lib/invoiceDocument";
 
 /** One flattened report row: entry-level fields repeated per invoice line item. */
 export interface EntryReportRow {
@@ -45,12 +46,16 @@ const HEADER = [
 ];
 
 export async function exportEntriesReportExcel(rows: EntryReportRow[]): Promise<void> {
+  // Date columns use formatInvoiceDisplayDate (→ DD.MM.YYYY) for parity with PDF/HTML outputs.
+  // Numeric columns are exported as raw numbers so Excel can sort, sum, and filter them;
+  // cell format codes (.z) below match the precision shown by fmtAmount in the UI.
+  const fmt = formatInvoiceDisplayDate;
   const data: (string | number)[][] = rows.map((r) => [
     r.customer_name,
     r.invoice_number,
-    r.invoice_date,
+    fmt(r.invoice_date),
     r.po_number,
-    r.po_date,
+    fmt(r.po_date),
     r.part_number,
     r.description,
     r.quantity ?? "",
@@ -58,14 +63,30 @@ export async function exportEntriesReportExcel(rows: EntryReportRow[]): Promise<
     r.invoice_total,
     r.exchange_rate,
     r.local_invoice_no,
-    r.local_invoice_date,
+    fmt(r.local_invoice_date),
     r.shipping_bill_no,
-    r.shipping_bill_date,
+    fmt(r.shipping_bill_date),
     r.bl_awb_no,
-    r.bl_awb_date,
+    fmt(r.bl_awb_date),
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([HEADER, ...data]);
+
+  // Keep numeric cells as true numbers while matching UI display precision.
+  // Report UI uses fmtAmount(..., 2) for qty/rate/total and fmtAmount(..., 4) for ex. rate.
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const excelRow = rowIndex + 2; // row 1 is header
+    const qtyCell = ws[`H${excelRow}`];
+    const rateCell = ws[`I${excelRow}`];
+    const totalCell = ws[`J${excelRow}`];
+    const exRateCell = ws[`K${excelRow}`];
+
+    if (qtyCell && typeof qtyCell.v === "number") qtyCell.z = "#,##0.00";
+    if (rateCell && typeof rateCell.v === "number") rateCell.z = "#,##0.00";
+    if (totalCell && typeof totalCell.v === "number") totalCell.z = "#,##0.00";
+    if (exRateCell && typeof exRateCell.v === "number") exRateCell.z = "#,##0.0000";
+  }
+
   ws["!cols"] = [
     { wch: 24 }, // Customer
     { wch: 16 }, // Invoice No

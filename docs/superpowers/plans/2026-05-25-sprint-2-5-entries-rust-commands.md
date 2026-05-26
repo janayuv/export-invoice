@@ -1,3 +1,49 @@
+# Sprint 2.5: Entries Writes → Rust Commands Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Move all `entries` write operations (create/update/delete) from frontend `db.execute()` calls into Rust Tauri commands with session-based RBAC, so `sql:allow-execute` can be removed in Sprint 2.6.
+
+**Architecture:** New `src-tauri/src/commands/entry.rs` follows the same `logic_*` + Tauri wrapper pattern as `invoice.rs` and `customer.rs`. All validation (link existence, invoice↔customer↔PO consistency, invoice_total recompute) moves from TypeScript into Rust. The TypeScript hook replaces all `db.execute()` write calls with `invoke(...)`, keeping reads as-is. RBAC: create/update → admin or operator; delete → admin only.
+
+**Tech Stack:** Rust (rusqlite, serde_json), Tauri 2, TypeScript, React 19
+
+**Sprint 2.6 gate:** After this sprint, `Select-String -Path "src/hooks/useEntries.ts" -Pattern "db\.execute"` must return no matches before Sprint 2.6 begins.
+
+---
+
+## File Structure
+
+| File | Change |
+|------|--------|
+| `src-tauri/src/commands/entry.rs` | **Create** — payload types, logic functions, Tauri commands, tests |
+| `src-tauri/src/commands/mod.rs` | Add `pub mod entry;` |
+| `src-tauri/src/lib.rs` | Register 3 new commands |
+| `src/hooks/useEntries.ts` | Replace `db.execute()` writes with `invoke`; remove dead validation helper |
+
+---
+
+## Task 1: Rust command file — skeleton + RBAC tests
+
+**Files:**
+- Create: `src-tauri/src/commands/entry.rs`
+- Modify: `src-tauri/src/commands/mod.rs`
+
+- [ ] **Step 1.1: Add `pub mod entry;` to mod.rs**
+
+Open `src-tauri/src/commands/mod.rs`. Add:
+
+```rust
+pub mod entry;
+```
+
+alongside the existing `pub mod auth;`, `pub mod invoice;`, `pub mod customer;`, `pub mod purchase_order;`.
+
+- [ ] **Step 1.2: Create entry.rs with payload types, todo stubs, and failing RBAC tests**
+
+Create `src-tauri/src/commands/entry.rs`:
+
+```rust
 use rusqlite::Connection;
 use tauri::State;
 
@@ -98,6 +144,7 @@ fn validate_entry_links(conn: &Connection, payload: &EntryPayload) -> Result<(),
     }
 
     if let Some(poid) = payload.purchase_order_id {
+        use rusqlite::OptionalExtension;
         let exists: bool = conn
             .query_row(
                 "SELECT COUNT(*) FROM purchase_orders WHERE id=?1",
@@ -162,9 +209,9 @@ pub fn logic_create_entry(
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(
             conn, "create_entry", session_user_id,
-            "ERR_PERMISSION: create_entry requires admin or operator role",
+            "Permission denied: create_entry requires admin or operator role",
         );
-        return Err("ERR_PERMISSION: create_entry requires admin or operator role".into());
+        return Err("Permission denied: create_entry requires admin or operator role".into());
     }
 
     validate_entry_links(conn, payload)?;
@@ -204,25 +251,15 @@ pub fn logic_update_entry(
     conn: &Connection,
     id: i64,
     payload: &EntryPayload,
-    expected_row_version: i64,
     acting_role: &str,
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(
             conn, "update_entry", session_user_id,
-            "ERR_PERMISSION: update_entry requires admin or operator role",
+            "Permission denied: update_entry requires admin or operator role",
         );
-        return Err("ERR_PERMISSION: update_entry requires admin or operator role".into());
-    }
-
-    // Verify existence first so "not found" is distinct from CONFLICT.
-    let exists: bool = conn
-        .query_row("SELECT COUNT(*) FROM entries WHERE id=?1", [id], |r| r.get::<_, i64>(0))
-        .map(|c| c > 0)
-        .map_err(|e| e.to_string())?;
-    if !exists {
-        return Err(format!("Entry {id} not found"));
+        return Err("Permission denied: update_entry requires admin or operator role".into());
     }
 
     validate_entry_links(conn, payload)?;
@@ -241,8 +278,8 @@ pub fn logic_update_entry(
                 local_invoice_no=?15, local_invoice_date=?16,
                 shipping_bill_no=?17, shipping_bill_date=?18,
                 bl_awb_no=?19, bl_awb_date=?20,
-                status=?21, row_version=row_version+1, updated_at=datetime('now')
-             WHERE id=?22 AND row_version=?23",
+                status=?21, updated_at=datetime('now')
+             WHERE id=?22",
             rusqlite::params![
                 payload.customer_id, payload.invoice_id, payload.purchase_order_id,
                 payload.customer_name, payload.customer_address,
@@ -252,13 +289,13 @@ pub fn logic_update_entry(
                 payload.local_invoice_no, payload.local_invoice_date,
                 payload.shipping_bill_no, payload.shipping_bill_date,
                 payload.bl_awb_no, payload.bl_awb_date,
-                payload.status, id, expected_row_version,
+                payload.status, id,
             ],
         )
         .map_err(|e| e.to_string())?;
 
     if rows == 0 {
-        return Err(format!("ERR_CONFLICT: entry {id} was modified by another session"));
+        return Err(format!("Entry {id} not found"));
     }
     Ok(())
 }
@@ -272,9 +309,9 @@ pub fn logic_delete_entry(
     if acting_role != "admin" {
         log_security_event(
             conn, "delete_entry", session_user_id,
-            "ERR_PERMISSION: delete_entry requires admin role",
+            "Permission denied: delete_entry requires admin role",
         );
-        return Err("ERR_PERMISSION: delete_entry requires admin role".into());
+        return Err("Permission denied: delete_entry requires admin role".into());
     }
 
     conn.execute("DELETE FROM entries WHERE id=?1", [id])
@@ -302,11 +339,10 @@ pub fn update_entry(
     db: State<'_, AppDb>,
     session: State<'_, AuthSession>,
     id: i64,
-    expected_row_version: i64,
     payload: EntryPayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_entry(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_entry(conn, id, &payload, &sess.role, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -381,7 +417,6 @@ mod tests {
                 status TEXT NOT NULL DEFAULT 'draft'
                     CHECK(status IN ('draft','final')),
                 created_by INTEGER NULL,
-                row_version INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -413,28 +448,28 @@ mod tests {
     fn create_denied_for_viewer() {
         let conn = create_test_db();
         let err = logic_create_entry(&conn, &minimal_payload(), None, "viewer", None).unwrap_err();
-        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+        assert!(err.contains("Permission denied"), "got: {err}");
     }
 
     #[test]
     fn update_denied_for_viewer() {
         let conn = create_test_db();
-        let err = logic_update_entry(&conn, 1, &minimal_payload(), 1, "viewer", None).unwrap_err();
-        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+        let err = logic_update_entry(&conn, 1, &minimal_payload(), "viewer", None).unwrap_err();
+        assert!(err.contains("Permission denied"), "got: {err}");
     }
 
     #[test]
     fn delete_denied_for_operator() {
         let conn = create_test_db();
         let err = logic_delete_entry(&conn, 1, "operator", None).unwrap_err();
-        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+        assert!(err.contains("Permission denied"), "got: {err}");
     }
 
     #[test]
     fn delete_denied_for_viewer() {
         let conn = create_test_db();
         let err = logic_delete_entry(&conn, 1, "viewer", None).unwrap_err();
-        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+        assert!(err.contains("Permission denied"), "got: {err}");
     }
 
     // ── happy paths ─────────────────────────────────────────────────────────
@@ -459,7 +494,7 @@ mod tests {
         let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", None).unwrap();
         let mut p = minimal_payload();
         p.local_invoice_no = "LI-999".into();
-        logic_update_entry(&conn, id, &p, 1, "admin", None).unwrap();
+        logic_update_entry(&conn, id, &p, "admin", None).unwrap();
         let stored: String = conn
             .query_row(
                 "SELECT local_invoice_no FROM entries WHERE id=?1", [id], |r| r.get(0)
@@ -485,6 +520,7 @@ mod tests {
     fn total_is_sum_of_item_total_amounts() {
         let conn = create_test_db();
         let mut p = minimal_payload();
+        // Two items; total_amount values are what gets summed (the form already did qty*price).
         p.items = vec![
             EntryItemPayload {
                 part_number: "A".into(), description: "".into(),
@@ -550,8 +586,8 @@ mod tests {
         let inv_id: i64 = conn.last_insert_rowid();
 
         let mut p = minimal_payload();
-        p.customer_id = Some(c1);
-        p.invoice_id  = Some(inv_id);
+        p.customer_id = Some(c1);   // Cust1
+        p.invoice_id  = Some(inv_id); // but invoice belongs to Cust2's PO
         let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
         assert!(err.contains("does not belong"), "got: {err}");
     }
@@ -576,8 +612,8 @@ mod tests {
         let inv_id: i64 = conn.last_insert_rowid();
 
         let mut p = minimal_payload();
-        p.invoice_id = Some(inv_id);
-        p.purchase_order_id = Some(po_b);
+        p.invoice_id = Some(inv_id); // links to po_a
+        p.purchase_order_id = Some(po_b); // but we say po_b
         let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
         assert!(err.contains("does not match"), "got: {err}");
     }
@@ -585,7 +621,7 @@ mod tests {
     #[test]
     fn update_returns_err_for_nonexistent_entry() {
         let conn = create_test_db();
-        let err = logic_update_entry(&conn, 9999, &minimal_payload(), 1, "admin", None).unwrap_err();
+        let err = logic_update_entry(&conn, 9999, &minimal_payload(), "admin", None).unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
     }
 
@@ -601,3 +637,370 @@ mod tests {
         assert_eq!(parsed[0]["part_number"], "P1");
     }
 }
+```
+
+- [ ] **Step 1.3: Run tests — verify all pass**
+
+```powershell
+cd D:\Export-Invoice\src-tauri; cargo test --lib entry 2>&1 | Select-String -Pattern "test result|FAILED"
+```
+
+Expected: `test result: ok. 16 passed; 0 failed`
+
+- [ ] **Step 1.4: Run full suite — no regressions**
+
+```powershell
+cd D:\Export-Invoice\src-tauri; cargo test 2>&1 | Select-String -Pattern "test result|FAILED"
+```
+
+Expected: all tests pass (prior 48 + 16 new = 64).
+
+- [ ] **Step 1.5: Commit**
+
+```powershell
+cd D:\Export-Invoice; git add src-tauri/src/commands/entry.rs src-tauri/src/commands/mod.rs; git commit -m @'
+feat(entry): Rust commands create_entry/update_entry/delete_entry
+
+- RBAC: create/update require admin or operator; delete requires admin
+- validate_entry_links: customer/invoice/PO existence + invoice-customer-PO consistency
+- recompute_total: authoritative sum of item total_amounts, rounded to 2dp
+- items serialized as JSON array matching TS EntryItem shape
+- 16 integration tests covering RBAC, link validation, happy paths, total recompute
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+'@
+```
+
+---
+
+## Task 2: Register commands in lib.rs
+
+**Files:**
+- Modify: `src-tauri/src/lib.rs`
+
+- [ ] **Step 2.1: Add the three commands to generate_handler![]**
+
+In `src-tauri/src/lib.rs`, inside `generate_handler![]`, add after the existing customer commands:
+
+```rust
+            commands::entry::create_entry,
+            commands::entry::update_entry,
+            commands::entry::delete_entry,
+```
+
+- [ ] **Step 2.2: Build**
+
+```powershell
+cd D:\Export-Invoice\src-tauri; cargo build 2>&1 | Select-String -Pattern "^error"
+```
+
+Expected: no output (clean build).
+
+- [ ] **Step 2.3: Commit**
+
+```powershell
+cd D:\Export-Invoice; git add src-tauri/src/lib.rs; git commit -m @'
+feat(entry): register create_entry, update_entry, delete_entry in generate_handler
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+'@
+```
+
+---
+
+## Task 3: Update useEntries.ts — replace db.execute() with invoke()
+
+**Files:**
+- Modify: `src/hooks/useEntries.ts`
+
+The reads (`useEntries` hook, `getEntry`, `getEntriesReport`, `getInvoicesByCustomerId`) stay unchanged using `db.select()`. Only the three write functions and the now-dead `validateEntryLinks` helper change.
+
+- [ ] **Step 3.1: Rewrite the file**
+
+Replace the full content of `src/hooks/useEntries.ts` with:
+
+```typescript
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { getDb } from "@/lib/db";
+import type { Entry, EntryFormValues, EntryItem } from "@/lib/types";
+
+/** List row for the Entry table. */
+export interface EntrySummary {
+  id: number;
+  customer_name: string;
+  invoice_number: string;
+  invoice_date: string;
+  po_number: string;
+  local_invoice_no: string;
+  shipping_bill_no: string;
+  status: string;
+  created_at: string;
+}
+
+/** Invoice picker row, scoped to a customer via the invoice's linked PO. */
+export interface InvoiceForCustomer {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  currency: string;
+  purchase_order_id: number | null;
+}
+
+export function useEntries() {
+  const [entries, setEntries] = useState<EntrySummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadList = useCallback(async () => {
+    try {
+      setLoading(true);
+      const db = await getDb();
+      const rows = await db.select<EntrySummary[]>(
+        `SELECT id, customer_name, invoice_number, invoice_date, po_number,
+                local_invoice_no, shipping_bill_no, status, created_at
+         FROM entries ORDER BY created_at DESC`
+      );
+      setEntries(rows);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
+
+  return { entries, loading, error, reload: loadList };
+}
+
+export async function getEntry(id: number): Promise<Entry | null> {
+  const db = await getDb();
+  const rows = await db.select<Entry[]>("SELECT * FROM entries WHERE id = ?", [id]);
+  if (rows.length === 0) return null;
+  const entry = rows[0];
+  entry.items = JSON.parse(
+    (entry.items as unknown as string) || "[]"
+  ) as EntryItem[];
+  return entry;
+}
+
+/**
+ * All entries with their line-item snapshots parsed, for the report view.
+ * Snapshot-based: reads denormalized fields from entries table only.
+ */
+export async function getEntriesReport(): Promise<Entry[]> {
+  const db = await getDb();
+  const rows = await db.select<Entry[]>(
+    "SELECT * FROM entries ORDER BY created_at DESC"
+  );
+  return rows.map((e) => ({
+    ...e,
+    items: JSON.parse((e.items as unknown as string) || "[]") as EntryItem[],
+  }));
+}
+
+/**
+ * Invoices available to link to an entry for a given customer.
+ * Excludes invoices already referenced by another entry (except the current one).
+ */
+export async function getInvoicesByCustomerId(
+  customerId: number,
+  currentEntryId: number | null = null
+): Promise<InvoiceForCustomer[]> {
+  const db = await getDb();
+  return db.select<InvoiceForCustomer[]>(
+    `SELECT i.id, i.invoice_number, i.invoice_date, i.currency, i.purchase_order_id
+     FROM invoices i
+     LEFT JOIN purchase_orders po ON i.purchase_order_id = po.id
+     WHERE (po.customer_id = ? OR i.purchase_order_id IS NULL)
+       AND i.id NOT IN (
+         SELECT invoice_id FROM entries
+         WHERE invoice_id IS NOT NULL
+           AND id != COALESCE(?, 0)
+       )
+     ORDER BY i.created_at DESC`,
+    [customerId, currentEntryId]
+  );
+}
+
+// ── Write commands — all validation and RBAC now live in Rust ─────────────────
+
+export async function createEntry(
+  data: EntryFormValues,
+  createdBy?: number
+): Promise<number> {
+  return invoke<number>("create_entry", {
+    payload: {
+      customer_id:        data.customer_id,
+      invoice_id:         data.invoice_id,
+      purchase_order_id:  data.purchase_order_id,
+      customer_name:      data.customer_name,
+      customer_address:   data.customer_address,
+      invoice_number:     data.invoice_number,
+      invoice_date:       data.invoice_date,
+      po_number:          data.po_number,
+      po_date:            data.po_date,
+      customer_po_no:     data.customer_po_no,
+      currency:           data.currency,
+      exchange_rate:      data.exchange_rate,
+      items:              data.items,
+      local_invoice_no:   data.local_invoice_no,
+      local_invoice_date: data.local_invoice_date,
+      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_date: data.shipping_bill_date,
+      bl_awb_no:          data.bl_awb_no,
+      bl_awb_date:        data.bl_awb_date,
+      status:             data.status,
+    },
+    createdBy: createdBy ?? null,
+  });
+}
+
+export async function updateEntry(
+  id: number,
+  data: EntryFormValues
+): Promise<void> {
+  await invoke("update_entry", {
+    id,
+    payload: {
+      customer_id:        data.customer_id,
+      invoice_id:         data.invoice_id,
+      purchase_order_id:  data.purchase_order_id,
+      customer_name:      data.customer_name,
+      customer_address:   data.customer_address,
+      invoice_number:     data.invoice_number,
+      invoice_date:       data.invoice_date,
+      po_number:          data.po_number,
+      po_date:            data.po_date,
+      customer_po_no:     data.customer_po_no,
+      currency:           data.currency,
+      exchange_rate:      data.exchange_rate,
+      items:              data.items,
+      local_invoice_no:   data.local_invoice_no,
+      local_invoice_date: data.local_invoice_date,
+      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_date: data.shipping_bill_date,
+      bl_awb_no:          data.bl_awb_no,
+      bl_awb_date:        data.bl_awb_date,
+      status:             data.status,
+    },
+  });
+}
+
+export async function deleteEntry(id: number): Promise<void> {
+  await invoke("delete_entry", { id });
+}
+```
+
+- [ ] **Step 3.2: TypeScript check**
+
+```powershell
+cd D:\Export-Invoice; npx tsc --noEmit 2>&1 | Select-String -Pattern "error TS"
+```
+
+Expected: no output.
+
+- [ ] **Step 3.3: Confirm Sprint 2.6 gate is clear**
+
+```powershell
+Select-String -Path "src/hooks/useEntries.ts" -Pattern "db\.execute"
+```
+
+Expected: **no output** (no matches).
+
+- [ ] **Step 3.4: Commit**
+
+```powershell
+cd D:\Export-Invoice; git add src/hooks/useEntries.ts; git commit -m @'
+refactor(entries): replace db.execute() writes with invoke() Rust commands
+
+createEntry, updateEntry, deleteEntry now call Rust via IPC.
+validateEntryLinks removed — validation lives in Rust logic_* functions.
+withTransaction and Database imports dropped — no longer needed for writes.
+Reads (useEntries, getEntry, getEntriesReport, getInvoicesByCustomerId) unchanged.
+
+Sprint 2.6 gate: db.execute() no longer present in useEntries.ts.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+'@
+```
+
+---
+
+## Verification Checklist
+
+- [ ] **All Rust tests pass**
+
+```powershell
+cd D:\Export-Invoice\src-tauri; cargo test 2>&1 | Select-String -Pattern "test result"
+```
+
+Expected: `test result: ok. 64 passed; 0 failed; 0 ignored`
+
+- [ ] **TypeScript clean**
+
+```powershell
+cd D:\Export-Invoice; npx tsc --noEmit 2>&1 | Select-String -Pattern "error TS"
+```
+
+Expected: no output.
+
+- [ ] **Sprint 2.6 gate confirmed**
+
+```powershell
+Select-String -Path "src/hooks/useEntries.ts" -Pattern "db\.execute"
+```
+
+Expected: no output.
+
+- [ ] **Frontend build**
+
+```powershell
+cd D:\Export-Invoice; npm run build 2>&1 | Select-String -Pattern "error"
+```
+
+Expected: no errors.
+
+- [ ] **Manual smoke-test**
+
+```powershell
+cd D:\Export-Invoice; npm run tauri dev
+```
+
+1. Log in as admin → go to Entries → Create a new entry → should succeed.
+2. Edit the entry → save changes → should update correctly.
+3. Log in as operator → edit entry → should succeed. Attempt delete → should be denied with "Permission denied" error.
+4. Log in as admin → delete the entry → should succeed.
+5. Open DevTools console and verify the invoke works directly:
+   ```js
+   await window.__TAURI__.core.invoke("create_entry", {
+     payload: {
+       customer_id: null, invoice_id: null, purchase_order_id: null,
+       customer_name: "Smoke Test", customer_address: "",
+       invoice_number: "SMOKE/1", invoice_date: "2025-06-01",
+       po_number: "", po_date: "", customer_po_no: "",
+       currency: "USD", exchange_rate: 1.0, items: [],
+       local_invoice_no: "", local_invoice_date: "",
+       shipping_bill_no: "", shipping_bill_date: "",
+       bl_awb_no: "", bl_awb_date: "", status: "draft"
+     },
+     createdBy: null
+   });
+   // Expected: a positive integer (new entry id)
+   ```
+
+---
+
+## Sprint 2.6 Gate
+
+Sprint 2.6 (removing `sql:allow-execute` from `src-tauri/capabilities/default.json`) **may now begin**. Confirm one last time:
+
+```powershell
+Select-String -Path "src/hooks/useEntries.ts" -Pattern "db\.execute"
+```
+
+No matches → Sprint 2.6 is unblocked.

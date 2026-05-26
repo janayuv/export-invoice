@@ -73,6 +73,8 @@ export function ReportEntries() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
   useEffect(() => {
@@ -86,21 +88,23 @@ export function ReportEntries() {
 
   const filtered = useMemo(() => {
     const q = globalFilter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [
-        r.customer_name,
-        r.invoice_number,
-        r.invoice_date,
-        r.po_number,
-        r.part_number,
-        r.description,
-        r.local_invoice_no,
-        r.shipping_bill_no,
-        r.bl_awb_no,
-      ].some((v) => v.toLowerCase().includes(q))
-    );
-  }, [rows, globalFilter]);
+    return rows.filter((r) => {
+      // Text search across key fields.
+      if (q) {
+        const hit = [
+          r.customer_name, r.invoice_number, r.invoice_date,
+          r.po_number, r.part_number, r.description,
+          r.local_invoice_no, r.shipping_bill_no, r.bl_awb_no,
+        ].some((v) => v.toLowerCase().includes(q));
+        if (!hit) return false;
+      }
+      // Date range on invoice_date — inclusive boundaries, ISO string comparison
+      // is safe because YYYY-MM-DD lexicographic order matches calendar order.
+      if (dateFrom && r.invoice_date < dateFrom) return false;
+      if (dateTo && r.invoice_date > dateTo) return false;
+      return true;
+    });
+  }, [rows, globalFilter, dateFrom, dateTo]);
 
   const columns: ColumnDef<EntryReportRow>[] = [
     { accessorKey: "customer_name", header: "Customer", cell: ({ getValue }) => txt(getValue<string>()) },
@@ -198,14 +202,42 @@ export function ReportEntries() {
         </Button>
       </div>
 
-      <div className="relative flex-1 max-w-sm">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search customer, invoice, PO, shipping bill…"
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="pl-8"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-48 max-w-sm">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search customer, invoice, PO, shipping bill…"
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="whitespace-nowrap">Invoice date:</span>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-36"
+            title="From (inclusive)"
+          />
+          <span>–</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-36"
+            title="To (inclusive)"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              clear
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (

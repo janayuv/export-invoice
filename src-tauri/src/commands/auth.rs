@@ -309,7 +309,7 @@ pub fn logic_update_user_info(
     acting_role: &str,
 ) -> Result<(), String> {
     if acting_role != "admin" {
-        return Err("Permission denied: manage_users requires admin role".into());
+        return Err("ERR_PERMISSION: manage_users requires admin role".into());
     }
     conn.execute(
         "UPDATE users SET name=?1, role=?2, is_active=?3, updated_at=datetime('now') WHERE id=?4",
@@ -636,7 +636,7 @@ pub fn verify_audit_chain(
 ) -> Result<ChainVerifyResult, String> {
     let sess = session.get()?;
     if sess.role != "admin" {
-        return Err("Permission denied: verify_audit_chain requires admin role".into());
+        return Err("ERR_PERMISSION: verify_audit_chain requires admin role".into());
     }
     db.with_conn(logic_verify_audit_chain)
 }
@@ -655,7 +655,7 @@ pub fn get_user_auth_trends(
 ) -> Result<Vec<UserAuthTrend>, String> {
     let sess = session.get()?;
     if sess.role != "admin" {
-        return Err("Permission denied: get_user_auth_trends requires admin role".into());
+        return Err("ERR_PERMISSION: get_user_auth_trends requires admin role".into());
     }
     db.with_conn(logic_get_user_auth_trends)
 }
@@ -668,7 +668,7 @@ pub fn get_security_events(
 ) -> Result<Vec<SecurityEvent>, String> {
     let sess = session.get()?;
     if sess.role != "admin" {
-        return Err("Permission denied: get_security_events requires admin role".into());
+        return Err("ERR_PERMISSION: get_security_events requires admin role".into());
     }
     db.with_conn(|conn| logic_get_security_events(conn, limit))
 }
@@ -1013,7 +1013,7 @@ pub(crate) mod tests {
         setup_users_table(&conn);
         let err = logic_update_user_info(&conn, 1, "Alice", "admin", true, &id.role)
             .unwrap_err();
-        assert!(err.contains("Permission denied"), "viewer should be denied, got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "viewer should be denied, got: {err}");
     }
 
     // ── audit log tests ───────────────────────────────────────────────────────
@@ -1164,7 +1164,7 @@ pub(crate) mod tests {
         ).unwrap();
 
         log_security_event(&conn, "create_invoice", Some(7),
-            "Permission denied: create_invoice requires admin or operator role");
+            "ERR_PERMISSION: create_invoice requires admin or operator role");
 
         let (cmd, uid, reason): (String, Option<i64>, String) = conn.query_row(
             "SELECT command, user_id, reason FROM security_event_log LIMIT 1",
@@ -1173,7 +1173,7 @@ pub(crate) mod tests {
         ).unwrap();
         assert_eq!(cmd, "create_invoice");
         assert_eq!(uid, Some(7));
-        assert!(reason.contains("Permission denied"));
+        assert!(reason.contains("ERR_PERMISSION:"));
     }
 
     fn setup_security_event_log_table(conn: &Connection) {
@@ -1192,8 +1192,8 @@ pub(crate) mod tests {
     fn get_security_events_returns_recent_denials() {
         let conn = Connection::open_in_memory().unwrap();
         setup_security_event_log_table(&conn);
-        log_security_event(&conn, "delete_invoice", Some(3), "Permission denied: admin only");
-        log_security_event(&conn, "finalize_invoice", Some(5), "Permission denied: admin only");
+        log_security_event(&conn, "delete_invoice", Some(3), "ERR_PERMISSION: admin only");
+        log_security_event(&conn, "finalize_invoice", Some(5), "ERR_PERMISSION: admin only");
 
         let events = logic_get_security_events(&conn, Some(10)).unwrap();
         assert_eq!(events.len(), 2);

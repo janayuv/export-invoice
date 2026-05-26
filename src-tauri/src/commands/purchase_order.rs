@@ -111,9 +111,9 @@ pub fn logic_create_purchase_order(
 ) -> Result<i64, String> {
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(conn, "create_purchase_order", session_user_id,
-            "Permission denied: create_purchase_order requires admin or operator role");
+            "ERR_PERMISSION: create_purchase_order requires admin or operator role");
         return Err(
-            "Permission denied: create_purchase_order requires admin or operator role".into(),
+            "ERR_PERMISSION: create_purchase_order requires admin or operator role".into(),
         );
     }
 
@@ -178,6 +178,7 @@ pub fn logic_update_purchase_order(
     conn: &Connection,
     id: i64,
     payload: &POPayload,
+    expected_row_version: i64,
     acting_role: &str,
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
@@ -197,17 +198,17 @@ pub fn logic_update_purchase_order(
         "operator" => {
             if current_status != "draft" {
                 log_security_event(conn, "update_purchase_order", session_user_id,
-                    "Permission denied: operator cannot edit a non-draft purchase order");
+                    "ERR_PERMISSION: operator cannot edit a non-draft purchase order");
                 return Err(format!(
-                    "Permission denied: operator cannot edit a {current_status} purchase order"
+                    "ERR_PERMISSION: operator cannot edit a {current_status} purchase order"
                 ));
             }
         }
         _ => {
             log_security_event(conn, "update_purchase_order", session_user_id,
-                "Permission denied: update_purchase_order requires admin or operator");
+                "ERR_PERMISSION: update_purchase_order requires admin or operator");
             return Err(
-                "Permission denied: update_purchase_order requires admin or operator".into(),
+                "ERR_PERMISSION: update_purchase_order requires admin or operator".into(),
             )
         }
     }
@@ -216,14 +217,14 @@ pub fn logic_update_purchase_order(
         .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
-        conn.execute(
+        let rows = conn.execute(
             "UPDATE purchase_orders SET
                 po_number=?1, po_date=?2, customer_id=?3, customer_name=?4,
                 customer_address=?5, customer_po_no=?6, delivery_date=?7,
                 delivery_address=?8, port_of_discharge=?9, final_destination=?10,
                 payment_terms=?11, currency=?12, exchange_rate=?13, notes=?14,
-                status=?15, show_sa_number=?16, updated_at=datetime('now')
-             WHERE id=?17",
+                status=?15, show_sa_number=?16, row_version=row_version+1, updated_at=datetime('now')
+             WHERE id=?17 AND row_version=?18",
             rusqlite::params![
                 payload.po_number,
                 payload.po_date,
@@ -242,9 +243,14 @@ pub fn logic_update_purchase_order(
                 payload.status,
                 payload.show_sa_number,
                 id,
+                expected_row_version,
             ],
         )
         .map_err(|e| e.to_string())?;
+
+        if rows == 0 {
+            return Err(format!("ERR_CONFLICT: PO {id} was modified by another session"));
+        }
 
         conn.execute("DELETE FROM purchase_order_items WHERE po_id=?1", [id])
             .map_err(|e| e.to_string())?;
@@ -276,8 +282,8 @@ pub fn logic_delete_purchase_order(
 ) -> Result<(), String> {
     if acting_role != "admin" {
         log_security_event(conn, "delete_purchase_order", session_user_id,
-            "Permission denied: delete_purchase_order requires admin role");
-        return Err("Permission denied: delete_purchase_order requires admin role".into());
+            "ERR_PERMISSION: delete_purchase_order requires admin role");
+        return Err("ERR_PERMISSION: delete_purchase_order requires admin role".into());
     }
     conn.execute("DELETE FROM purchase_orders WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
@@ -296,18 +302,18 @@ pub fn logic_set_po_status(
         "confirmed" | "closed" => {
             if acting_role != "admin" {
                 log_security_event(conn, "set_po_status", session_user_id,
-                    "Permission denied: setting PO status to confirmed/closed requires admin role");
+                    "ERR_PERMISSION: setting PO status to confirmed/closed requires admin role");
                 return Err(format!(
-                    "Permission denied: setting PO status to '{new_status}' requires admin role"
+                    "ERR_PERMISSION: setting PO status to '{new_status}' requires admin role"
                 ));
             }
         }
         _ => {
             if acting_role != "admin" && acting_role != "operator" {
                 log_security_event(conn, "set_po_status", session_user_id,
-                    "Permission denied: set_po_status requires admin or operator");
+                    "ERR_PERMISSION: set_po_status requires admin or operator");
                 return Err(
-                    "Permission denied: set_po_status requires admin or operator".into(),
+                    "ERR_PERMISSION: set_po_status requires admin or operator".into(),
                 );
             }
         }
@@ -327,7 +333,7 @@ pub fn logic_set_po_status(
     }
 
     conn.execute(
-        "UPDATE purchase_orders SET status=?1, updated_at=datetime('now') WHERE id=?2",
+        "UPDATE purchase_orders SET status=?1, row_version=row_version+1, updated_at=datetime('now') WHERE id=?2",
         rusqlite::params![new_status, id],
     )
     .map_err(|e| e.to_string())?;
@@ -354,10 +360,11 @@ pub fn update_purchase_order(
     db: State<'_, AppDb>,
     session: State<'_, AuthSession>,
     id: i64,
+    expected_row_version: i64,
     payload: POPayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_purchase_order(conn, id, &payload, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_purchase_order(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -379,4 +386,159 @@ pub fn set_po_status(
 ) -> Result<(), String> {
     let sess = session.get()?;
     db.with_conn(|conn| logic_set_po_status(conn, id, &new_status, &sess.role, Some(sess.user_id)))
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn create_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(r#"
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '');
+            CREATE TABLE po_sequence (year INTEGER PRIMARY KEY, last_number INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE purchase_orders (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                po_number        TEXT NOT NULL UNIQUE,
+                po_date          TEXT NOT NULL DEFAULT '',
+                customer_id      INTEGER,
+                customer_name    TEXT NOT NULL DEFAULT '',
+                customer_address TEXT NOT NULL DEFAULT '',
+                customer_po_no   TEXT NOT NULL DEFAULT '',
+                delivery_date    TEXT NOT NULL DEFAULT '',
+                delivery_address  TEXT NOT NULL DEFAULT '',
+                port_of_discharge TEXT NOT NULL DEFAULT '',
+                final_destination TEXT NOT NULL DEFAULT '',
+                payment_terms    TEXT NOT NULL DEFAULT '',
+                currency         TEXT NOT NULL DEFAULT 'INR',
+                exchange_rate    REAL NOT NULL DEFAULT 1.0,
+                notes            TEXT NOT NULL DEFAULT '',
+                status           TEXT NOT NULL DEFAULT 'draft',
+                show_sa_number   BOOLEAN NOT NULL DEFAULT TRUE,
+                row_version      INTEGER NOT NULL DEFAULT 1,
+                created_by       INTEGER NULL,
+                created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE purchase_order_items (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                po_id        INTEGER NOT NULL,
+                sr_no        INTEGER NOT NULL,
+                part_number  TEXT NOT NULL DEFAULT '',
+                sa_number    TEXT NOT NULL DEFAULT '',
+                description  TEXT NOT NULL DEFAULT '',
+                quantity     REAL NOT NULL DEFAULT 1.0,
+                unit         TEXT NOT NULL DEFAULT 'NOS',
+                unit_price   REAL NOT NULL DEFAULT 0.0,
+                total_amount REAL NOT NULL DEFAULT 0.0
+            );
+            CREATE TABLE security_event_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                command     TEXT NOT NULL,
+                user_id     INTEGER NULL,
+                reason      TEXT NOT NULL,
+                occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        "#).unwrap();
+        conn
+    }
+
+    fn minimal_payload() -> POPayload {
+        POPayload {
+            po_number:        "PO/1/2025-26".into(),
+            po_date:          "2025-04-01".into(),
+            customer_id:      None,
+            customer_name:    "Test Customer".into(),
+            customer_address: "".into(),
+            customer_po_no:   "CUST-001".into(),
+            delivery_date:    "".into(),
+            delivery_address: "".into(),
+            port_of_discharge: "".into(),
+            final_destination: "".into(),
+            payment_terms:    "".into(),
+            currency:         "INR".into(),
+            exchange_rate:    1.0,
+            notes:            "".into(),
+            status:           "draft".into(),
+            show_sa_number:   true,
+            items:            vec![POItemPayload {
+                sr_no:        1,
+                part_number:  "P1".into(),
+                sa_number:    "".into(),
+                description:  "Widget".into(),
+                quantity:     1.0,
+                unit:         "NOS".into(),
+                unit_price:   100.0,
+                total_amount: 100.0,
+            }],
+        }
+    }
+
+    // ── create RBAC ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_denied_for_viewer() {
+        let conn = create_test_db();
+        let err = logic_create_purchase_order(&conn, &minimal_payload(), None, "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn create_allowed_for_operator() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", None).unwrap();
+    }
+
+    #[test]
+    fn create_allowed_for_admin() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+    }
+
+    // ── delete RBAC ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_denied_for_operator() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let err = logic_delete_purchase_order(&conn, 1, "operator", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn delete_denied_for_viewer() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let err = logic_delete_purchase_order(&conn, 1, "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn delete_allowed_for_admin() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        logic_delete_purchase_order(&conn, 1, "admin", None).unwrap();
+    }
+
+    // ── set_po_status RBAC ──────────────────────────────────────────────────
+
+    #[test]
+    fn set_status_to_confirmed_denied_for_operator() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let err = logic_set_po_status(&conn, 1, "confirmed", "operator", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn set_status_denied_for_viewer() {
+        let conn = create_test_db();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let err = logic_set_po_status(&conn, 1, "draft", "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
 }

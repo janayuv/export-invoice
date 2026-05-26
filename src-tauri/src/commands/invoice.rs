@@ -145,9 +145,9 @@ pub fn logic_create_invoice(
 ) -> Result<i64, String> {
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(conn, "create_invoice", session_user_id,
-            "Permission denied: create_invoice requires admin or operator role");
+            "ERR_PERMISSION: create_invoice requires admin or operator role");
         return Err(
-            "Permission denied: create_invoice requires admin or operator role".into(),
+            "ERR_PERMISSION: create_invoice requires admin or operator role".into(),
         );
     }
 
@@ -218,6 +218,7 @@ pub fn logic_update_invoice(
     conn: &Connection,
     id: i64,
     payload: &InvoicePayload,
+    expected_row_version: i64,
     acting_role: &str,
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
@@ -239,16 +240,16 @@ pub fn logic_update_invoice(
         "operator" => {
             if current_status == "final" {
                 log_security_event(conn, "update_invoice", session_user_id,
-                    "Permission denied: operator cannot edit a finalized invoice");
+                    "ERR_PERMISSION: operator cannot edit a finalized invoice");
                 return Err(
-                    "Permission denied: operator cannot edit a finalized invoice".into(),
+                    "ERR_PERMISSION: operator cannot edit a finalized invoice".into(),
                 );
             }
         }
         _ => {
             log_security_event(conn, "update_invoice", session_user_id,
-                "Permission denied: invoice update requires admin or operator");
-            return Err("Permission denied: invoice update requires admin or operator".into());
+                "ERR_PERMISSION: invoice update requires admin or operator");
+            return Err("ERR_PERMISSION: invoice update requires admin or operator".into());
         }
     }
 
@@ -261,7 +262,7 @@ pub fn logic_update_invoice(
         .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
-        conn.execute(
+        let rows = conn.execute(
             "UPDATE invoices SET
                 invoice_number=?1, invoice_date=?2, transport_mode=?3, buyer_order_no=?4,
                 duty_drawback=?5, hs_code=?6, other_references=?7, consignee_name=?8,
@@ -271,8 +272,8 @@ pub fn logic_update_invoice(
                 final_destination=?19, terms_of_payment=?20, currency=?21,
                 exchange_rate=?22, net_weight=?23, gross_weight=?24, notes=?25,
                 status=?26, purchase_order_id=?27, incoterm=?28, packing_list=?29,
-                show_sa_number=?30, updated_at=datetime('now')
-             WHERE id=?31",
+                show_sa_number=?30, row_version=row_version+1, updated_at=datetime('now')
+             WHERE id=?31 AND row_version=?32",
             rusqlite::params![
                 payload.invoice_number, payload.invoice_date, payload.transport_mode,
                 payload.buyer_order_no, payload.duty_drawback, payload.hs_code,
@@ -283,10 +284,15 @@ pub fn logic_update_invoice(
                 payload.final_destination, payload.terms_of_payment, payload.currency,
                 payload.exchange_rate, payload.net_weight, payload.gross_weight,
                 payload.notes, payload.status, payload.purchase_order_id,
-                payload.incoterm, packing_list_json, payload.show_sa_number, id,
+                payload.incoterm, packing_list_json, payload.show_sa_number,
+                id, expected_row_version,
             ],
         )
         .map_err(|e| e.to_string())?;
+
+        if rows == 0 {
+            return Err(format!("ERR_CONFLICT: invoice {id} was modified by another session"));
+        }
 
         conn.execute("DELETE FROM invoice_items WHERE invoice_id=?1", [id])
             .map_err(|e| e.to_string())?;
@@ -313,8 +319,8 @@ pub fn logic_update_invoice(
 pub fn logic_delete_invoice(conn: &Connection, id: i64, acting_role: &str, session_user_id: Option<i64>) -> Result<(), String> {
     if acting_role != "admin" {
         log_security_event(conn, "delete_invoice", session_user_id,
-            "Permission denied: delete_invoice requires admin role");
-        return Err("Permission denied: delete_invoice requires admin role".into());
+            "ERR_PERMISSION: delete_invoice requires admin role");
+        return Err("ERR_PERMISSION: delete_invoice requires admin role".into());
     }
 
     let inv_no: Option<String> = conn
@@ -369,8 +375,8 @@ pub fn logic_finalize_invoice(
 ) -> Result<(), String> {
     if acting_role != "admin" {
         log_security_event(conn, "finalize_invoice", session_user_id,
-            "Permission denied: finalize_invoice requires admin role");
-        return Err("Permission denied: finalize_invoice requires admin role".into());
+            "ERR_PERMISSION: finalize_invoice requires admin role");
+        return Err("ERR_PERMISSION: finalize_invoice requires admin role".into());
     }
 
     let status: Option<String> = conn
@@ -390,7 +396,7 @@ pub fn logic_finalize_invoice(
 
     conn.execute(
         "UPDATE invoices \
-         SET status='final', finalized_by=?1, updated_at=datetime('now') \
+         SET status='final', finalized_by=?1, row_version=row_version+1, updated_at=datetime('now') \
          WHERE id=?2",
         rusqlite::params![finalized_by, id],
     )
@@ -418,10 +424,11 @@ pub fn update_invoice(
     db: State<'_, AppDb>,
     session: State<'_, AuthSession>,
     id: i64,
+    expected_row_version: i64,
     payload: InvoicePayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_invoice(conn, id, &payload, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_invoice(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -494,6 +501,7 @@ mod tests {
                 incoterm TEXT NOT NULL DEFAULT '',
                 show_sa_number BOOLEAN NOT NULL DEFAULT TRUE,
                 packing_list TEXT NOT NULL DEFAULT '[]',
+                row_version INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -598,7 +606,7 @@ mod tests {
         let conn = create_test_db();
         let err = logic_create_invoice(&conn, &minimal_payload("draft"), None, "viewer", None)
             .unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
@@ -649,7 +657,7 @@ mod tests {
         let mut p = minimal_payload("draft");
         p.invoice_number = format!("EXP/1/2025-26"); // keep same invoice number
         p.items[0].sa_number = "SA-99".to_string();
-        logic_update_invoice(&conn, id, &p, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
 
         let sa_after: String = conn
             .query_row(
@@ -665,9 +673,9 @@ mod tests {
     fn operator_cannot_edit_final_invoice() {
         let conn = create_test_db();
         let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", None).unwrap();
-        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), "operator", None)
+        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "operator", None)
             .unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
@@ -676,7 +684,7 @@ mod tests {
         let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", None).unwrap();
         let mut p = minimal_payload("draft");
         p.invoice_number = "EXP/1/2025-26".to_string();
-        logic_update_invoice(&conn, id, &p, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
         let status: String = conn
             .query_row("SELECT status FROM invoices WHERE id=?1", [id], |r| r.get(0))
             .unwrap();
@@ -687,17 +695,32 @@ mod tests {
     fn viewer_cannot_update() {
         let conn = create_test_db();
         let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
-        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), "viewer", None)
+        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "viewer", None)
             .unwrap_err();
-        assert!(err.contains("Permission denied"), "got: {err}");
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
     fn update_nonexistent_invoice_returns_error() {
         let conn = create_test_db();
-        let err = logic_update_invoice(&conn, 9999, &minimal_payload("draft"), "admin", None)
+        let err = logic_update_invoice(&conn, 9999, &minimal_payload("draft"), 1, "admin", None)
             .unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
+    }
+
+    #[test]
+    fn update_with_stale_row_version_returns_conflict() {
+        let conn = create_test_db();
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
+        // First update succeeds and bumps row_version to 2.
+        let mut p = minimal_payload("draft");
+        p.invoice_number = "EXP/1/2025-26".to_string();
+        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
+        // Second update with stale version 1 must be rejected.
+        let err = logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap_err();
+        assert!(err.contains("CONFLICT"), "expected CONFLICT, got: {err}");
+        // Correct version 2 succeeds.
+        logic_update_invoice(&conn, id, &p, 2, "admin", None).unwrap();
     }
 
     #[test]

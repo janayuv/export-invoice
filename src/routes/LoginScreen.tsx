@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Delete, Check, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,18 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: "text-gray-500",
 };
 
+/**
+ * Robustly parse a lockout timestamp that may arrive as either:
+ *  - ISO 8601 with Z suffix: "2026-05-22T18:45:00Z"  (Rust output after fix)
+ *  - SQLite bare datetime:   "2026-05-22 18:45:00"   (legacy, treated as UTC)
+ */
+function parseLockoutDate(until: string): Date {
+  // Already valid ISO 8601 — Date constructor handles it correctly.
+  if (until.includes("T") || until.endsWith("Z")) return new Date(until);
+  // SQLite bare format (space separator, no tz designator) — treat as UTC.
+  return new Date(until.replace(" ", "T") + "Z");
+}
+
 export function LoginScreen() {
   const { login } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -27,9 +39,30 @@ export function LoginScreen() {
   const [pin, setPin] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [shake, setShake] = useState(false);
+  // lockoutUntil: ISO string from Rust while account is locked
+  const [lockoutUntil, setLockoutUntil] = useState<string | null>(null);
 
   useEffect(() => {
     getActiveUsers().then(setUsers);
+  }, []);
+
+  // Auto-clear lockout state when the expiry time passes.
+  useEffect(() => {
+    if (!lockoutUntil) return;
+    const ms = parseLockoutDate(lockoutUntil).getTime() - Date.now();
+    if (ms <= 0) {
+      setLockoutUntil(null);
+      return;
+    }
+    const timer = setTimeout(() => setLockoutUntil(null), ms);
+    return () => clearTimeout(timer);
+  }, [lockoutUntil]);
+
+  // Clear lockout state whenever the user selection changes.
+  const handleUserChange = useCallback((v: string | null) => {
+    setSelectedId(v ?? "");
+    setPin("");
+    setLockoutUntil(null);
   }, []);
 
   function pressDigit(d: string) {
@@ -45,13 +78,29 @@ export function LoginScreen() {
     if (!userId || pin.length < 4) return;
     setIsVerifying(true);
     try {
-      const user = await verifyPin(userId, pin);
-      if (user) {
-        login(user);
+      const result = await verifyPin(userId, pin);
+      if (result.status === "success") {
+        setLockoutUntil(null);
+        login(result.user);
+      } else if (result.status === "locked") {
+        setLockoutUntil(result.until);
+        setPin("");
+        const lockedTime = parseLockoutDate(result.until).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        toast.error(`Account locked — try again after ${lockedTime}`);
       } else {
+        // status === "failed"
+        setLockoutUntil(null);
         setShake(true);
         setPin("");
-        toast.error("Incorrect PIN");
+        const rem = result.remaining_attempts;
+        toast.error(
+          rem === 1
+            ? "Incorrect PIN — 1 attempt left before lockout"
+            : `Incorrect PIN — ${rem} attempts left`
+        );
         setTimeout(() => setShake(false), 600);
       }
     } catch (e) {
@@ -75,7 +124,8 @@ export function LoginScreen() {
   }
 
   const selectedUser = users.find((u) => String(u.id) === selectedId);
-  const canSubmit = !!selectedId && pin.length >= 4 && !isVerifying;
+  const isLocked = lockoutUntil != null;
+  const canSubmit = !!selectedId && pin.length >= 4 && !isVerifying && !isLocked;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
@@ -100,7 +150,7 @@ export function LoginScreen() {
             </label>
             <SelectPrimitive.Root
               value={selectedId}
-              onValueChange={(v) => { setSelectedId(String(v)); setPin(""); }}
+              onValueChange={handleUserChange}
             >
               <SelectPrimitive.Trigger
                 className="flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent h-8 py-2 pr-2 pl-2.5 text-sm whitespace-nowrap outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 data-placeholder:text-muted-foreground"
@@ -172,6 +222,17 @@ export function LoginScreen() {
             </div>
           </div>
 
+          {/* Lockout banner */}
+          {isLocked && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive text-center">
+              Account locked until{" "}
+              {parseLockoutDate(lockoutUntil!).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </div>
+          )}
+
           {/* Number pad */}
           <div className="grid grid-cols-3 gap-2">
             {PAD.flat().map((key) => (
@@ -179,7 +240,7 @@ export function LoginScreen() {
                 key={key}
                 type="button"
                 onClick={() => handlePadPress(key)}
-                disabled={!selectedId}
+                disabled={!selectedId || isLocked}
                 className="h-11 rounded-lg border bg-background text-sm font-semibold
                   hover:bg-accent hover:text-accent-foreground
                   disabled:opacity-30 disabled:cursor-not-allowed

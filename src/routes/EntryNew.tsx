@@ -74,6 +74,7 @@ export function EntryNew() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [items, setItems] = useState<EntryItem[]>([]);
   const editLoadedRef = useRef(false);
+  const originalRowVersionRef = useRef<number>(1);
 
   const form = useForm<EntryFormValues>({ defaultValues: EMPTY_DEFAULTS });
   const { register, setValue, reset, watch, formState: { isSubmitting } } = form;
@@ -98,6 +99,7 @@ export function EntryNew() {
         navigate("/entries");
         return;
       }
+      originalRowVersionRef.current = entry.row_version;
       reset({
         customer_id: entry.customer_id,
         invoice_id: entry.invoice_id,
@@ -241,7 +243,7 @@ export function EntryNew() {
     }
     try {
       if (isEdit && id) {
-        await updateEntry(Number(id), data);
+        await updateEntry(Number(id), data, originalRowVersionRef.current);
         toast.success("Entry updated");
       } else {
         await createEntry(data, currentUser?.id);
@@ -249,7 +251,12 @@ export function EntryNew() {
       }
       navigate("/entries");
     } catch (e) {
-      toast.error(`Error: ${e}`);
+      const msg = String(e);
+      if (msg.includes("ERR_CONFLICT:")) {
+        toast.error("This entry was changed by another session — please reload and re-apply your edits.");
+      } else {
+        toast.error(`Error: ${msg}`);
+      }
     }
   }
 

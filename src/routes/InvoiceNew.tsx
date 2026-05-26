@@ -79,6 +79,7 @@ export function InvoiceNew() {
   const [loadingPOs, setLoadingPOs] = useState(false);
   const editFormLoadedRef = useRef(false);
   const editPickerSyncedRef = useRef(false);
+  const originalRowVersionRef = useRef<number>(1);
   const editPickerMetaRef = useRef<{
     purchaseOrderId: number | null;
     consigneeName: string;
@@ -179,6 +180,7 @@ export function InvoiceNew() {
     (async () => {
       const inv = await getInvoice(Number(id));
       if (!inv) return;
+      originalRowVersionRef.current = inv.row_version;
       if (!currentUser) return;
       if (!canEditInvoiceByStatus(currentUser.role, inv.status)) {
         toast.error(
@@ -378,16 +380,21 @@ export function InvoiceNew() {
         items: includedItems,
       };
       if (isEdit && id) {
-        await updateInvoice(Number(id), finalData);
+        await updateInvoice(Number(id), finalData, originalRowVersionRef.current);
         toast.success("Invoice updated");
         navigate(`/invoices/${id}`);
       } else {
-        const newId = await createInvoice(finalData, currentUser?.id);
+        const newId = await createInvoice(finalData);
         toast.success(finalize ? "Invoice finalized" : "Invoice saved as draft");
         navigate(`/invoices/${newId}`);
       }
     } catch (e) {
-      toast.error(`Error: ${e}`);
+      const msg = String(e);
+      if (msg.includes("ERR_CONFLICT:")) {
+        toast.error("This invoice was changed by another session — please reload and re-apply your edits.");
+      } else {
+        toast.error(`Error: ${msg}`);
+      }
     }
   }
 

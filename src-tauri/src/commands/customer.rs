@@ -38,9 +38,9 @@ pub fn logic_create_customer(
 ) -> Result<i64, String> {
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(conn, "create_customer", session_user_id,
-            "Permission denied: create_customer requires admin or operator role");
+            "ERR_PERMISSION: create_customer requires admin or operator role");
         return Err(
-            "Permission denied: create_customer requires admin or operator role".into(),
+            "ERR_PERMISSION: create_customer requires admin or operator role".into(),
         );
     }
     conn.execute(
@@ -74,9 +74,9 @@ pub fn logic_update_customer(
 ) -> Result<(), String> {
     if acting_role != "admin" && acting_role != "operator" {
         log_security_event(conn, "update_customer", session_user_id,
-            "Permission denied: update_customer requires admin or operator role");
+            "ERR_PERMISSION: update_customer requires admin or operator role");
         return Err(
-            "Permission denied: update_customer requires admin or operator role".into(),
+            "ERR_PERMISSION: update_customer requires admin or operator role".into(),
         );
     }
     // Historical snapshots in purchase_orders/invoices/entries are intentionally not updated.
@@ -112,8 +112,8 @@ pub fn logic_delete_customer(
 ) -> Result<(), String> {
     if acting_role != "admin" {
         log_security_event(conn, "delete_customer", session_user_id,
-            "Permission denied: delete_customer requires admin role");
-        return Err("Permission denied: delete_customer requires admin role".into());
+            "ERR_PERMISSION: delete_customer requires admin role");
+        return Err("ERR_PERMISSION: delete_customer requires admin role".into());
     }
 
     let po_count: i64 = conn
@@ -186,4 +186,133 @@ pub fn delete_customer(
 ) -> Result<(), String> {
     let sess = session.get()?;
     db.with_conn(|conn| logic_delete_customer(conn, id, &sess.role, Some(sess.user_id)))
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn create_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE customers (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                name                    TEXT NOT NULL UNIQUE,
+                address                 TEXT NOT NULL DEFAULT '',
+                country_of_destination  TEXT NOT NULL DEFAULT '',
+                port_of_discharge       TEXT NOT NULL DEFAULT '',
+                final_destination       TEXT NOT NULL DEFAULT '',
+                currency                TEXT NOT NULL DEFAULT 'USD',
+                pre_carriage_by         TEXT NOT NULL DEFAULT '',
+                place_of_receipt        TEXT NOT NULL DEFAULT '',
+                pre_carrier             TEXT NOT NULL DEFAULT '',
+                port_of_loading         TEXT NOT NULL DEFAULT '',
+                created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE UNIQUE INDEX idx_customers_name_ci ON customers(LOWER(TRIM(name)));
+            CREATE TABLE purchase_orders (id INTEGER PRIMARY KEY, customer_id INTEGER);
+            CREATE TABLE invoices       (id INTEGER PRIMARY KEY, purchase_order_id INTEGER);
+            CREATE TABLE entries        (id INTEGER PRIMARY KEY, customer_id INTEGER);
+            CREATE TABLE security_event_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                command     TEXT NOT NULL,
+                user_id     INTEGER NULL,
+                reason      TEXT NOT NULL,
+                occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn minimal_payload() -> CustomerPayload {
+        CustomerPayload {
+            name: "Test Corp".into(),
+            address: "123 Road".into(),
+            country_of_destination: "DE".into(),
+            port_of_discharge: "HAMBURG".into(),
+            final_destination: "BERLIN".into(),
+            currency: "USD".into(),
+            pre_carriage_by: "ROAD".into(),
+            place_of_receipt: "DELHI".into(),
+            pre_carrier: "".into(),
+            port_of_loading: "NHAVA SHEVA".into(),
+        }
+    }
+
+    // ── create RBAC ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_denied_for_viewer() {
+        let conn = create_test_db();
+        let err = logic_create_customer(&conn, &minimal_payload(), "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn create_allowed_for_operator() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "operator", None).unwrap();
+        assert!(id > 0);
+    }
+
+    #[test]
+    fn create_allowed_for_admin() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        assert!(id > 0);
+    }
+
+    // ── update RBAC ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn update_denied_for_viewer() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        let mut p = minimal_payload();
+        p.name = "Updated Corp".into();
+        let err = logic_update_customer(&conn, id, &p, "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn update_allowed_for_operator() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        let mut p = minimal_payload();
+        p.name = "Updated Corp".into();
+        logic_update_customer(&conn, id, &p, "operator", None).unwrap();
+    }
+
+    // ── delete RBAC ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_denied_for_operator() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        let err = logic_delete_customer(&conn, id, "operator", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn delete_denied_for_viewer() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        let err = logic_delete_customer(&conn, id, "viewer", None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn delete_allowed_for_admin() {
+        let conn = create_test_db();
+        let id = logic_create_customer(&conn, &minimal_payload(), "admin", None).unwrap();
+        logic_delete_customer(&conn, id, "admin", None).unwrap();
+    }
 }

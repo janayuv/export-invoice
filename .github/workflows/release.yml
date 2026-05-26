@@ -31,6 +31,19 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Rust unit tests
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: TypeScript type check
+        run: node node_modules/typescript/bin/tsc --noEmit
+
+      - name: Frontend tests
+        run: npm test -- --run
+
+      - name: Frontend production build
+        run: npm run build
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:

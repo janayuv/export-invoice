@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 
 export interface Customer {
@@ -17,6 +18,21 @@ export interface Customer {
 
 export type CustomerFormData = Omit<Customer, "id" | "created_at">;
 
+function normalizeCustomer(data: CustomerFormData): CustomerFormData {
+  return {
+    name: data.name.trim(),
+    address: data.address.trim(),
+    country_of_destination: data.country_of_destination.trim(),
+    port_of_discharge: data.port_of_discharge.trim(),
+    final_destination: data.final_destination.trim(),
+    currency: data.currency.trim(),
+    pre_carriage_by: data.pre_carriage_by.trim(),
+    place_of_receipt: data.place_of_receipt.trim(),
+    pre_carrier: data.pre_carrier.trim(),
+    port_of_loading: data.port_of_loading.trim(),
+  };
+}
+
 export async function getCustomers(): Promise<Customer[]> {
   const db = await getDb();
   return db.select<Customer[]>(
@@ -34,42 +50,15 @@ export async function getCustomer(id: number): Promise<Customer | null> {
 }
 
 export async function createCustomer(data: CustomerFormData): Promise<number> {
-  const db = await getDb();
-  const result = await db.execute(
-    `INSERT INTO customers (
-      name, address, country_of_destination,
-      port_of_discharge, final_destination, currency,
-      pre_carriage_by, place_of_receipt, pre_carrier, port_of_loading
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [
-      data.name.trim(), data.address, data.country_of_destination,
-      data.port_of_discharge, data.final_destination, data.currency,
-      data.pre_carriage_by, data.place_of_receipt,
-      data.pre_carrier, data.port_of_loading,
-    ]
-  );
-  return result.lastInsertId ?? 0;
+  const payload = normalizeCustomer(data);
+  return invoke<number>("create_customer", { payload });
 }
 
 export async function updateCustomer(id: number, data: CustomerFormData): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    `UPDATE customers SET
-      name=$1, address=$2, country_of_destination=$3,
-      port_of_discharge=$4, final_destination=$5, currency=$6,
-      pre_carriage_by=$7, place_of_receipt=$8, pre_carrier=$9,
-      port_of_loading=$10, updated_at=datetime('now')
-    WHERE id=$11`,
-    [
-      data.name.trim(), data.address, data.country_of_destination,
-      data.port_of_discharge, data.final_destination, data.currency,
-      data.pre_carriage_by, data.place_of_receipt,
-      data.pre_carrier, data.port_of_loading, id,
-    ]
-  );
+  const payload = normalizeCustomer(data);
+  await invoke("update_customer", { id, payload });
 }
 
 export async function deleteCustomer(id: number): Promise<void> {
-  const db = await getDb();
-  await db.execute("DELETE FROM customers WHERE id = ?", [id]);
+  await invoke("delete_customer", { id });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Save, CheckCircle, Plus, Trash2, FilePlus2, ArrowLeft, UserCheck, ClipboardList, Truck, NotebookPen } from "lucide-react";
@@ -18,7 +18,7 @@ import { Combobox } from "@/components/ui/combobox";
 import {
   type POFormValues,
   type POItem,
-  generatePONumber,
+  previewPONumber,
   getPurchaseOrder,
   createPurchaseOrder,
   updatePurchaseOrder,
@@ -90,6 +90,7 @@ export function PurchaseOrderNew() {
 
   const [form, setForm] = useState<POFormValues>(DEFAULT_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const originalRowVersionRef = useRef<number>(1);
   const [generatedNumber, setGeneratedNumber] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -99,7 +100,7 @@ export function PurchaseOrderNew() {
   // Generate PO number for new PO
   useEffect(() => {
     if (!isEdit) {
-      generatePONumber().then((num) => {
+      previewPONumber().then((num) => {
         setGeneratedNumber(num);
         setForm((f) => ({ ...f, po_number: num }));
       });
@@ -126,6 +127,7 @@ export function PurchaseOrderNew() {
     if (isEdit && id) {
       getPurchaseOrder(Number(id)).then((po) => {
         if (!po) return;
+        originalRowVersionRef.current = po.row_version;
         if (!currentUser) return;
         if (!canEditPurchaseOrderByStatus(currentUser.role, po.status)) {
           toast.error(
@@ -282,16 +284,21 @@ export function PurchaseOrderNew() {
         status: confirm ? "confirmed" : validated.status,
       };
       if (isEdit && id) {
-        await updatePurchaseOrder(Number(id), finalForm);
+        await updatePurchaseOrder(Number(id), finalForm, originalRowVersionRef.current);
         toast.success("Purchase order updated");
         navigate(`/purchase-orders/${id}`);
       } else {
-        const newId = await createPurchaseOrder(finalForm, currentUser?.id);
+        const newId = await createPurchaseOrder(finalForm);
         toast.success(confirm ? "Purchase order confirmed" : "Purchase order saved as draft");
         navigate(`/purchase-orders/${newId}`);
       }
     } catch (e) {
-      toast.error(`Error: ${e}`);
+      const msg = String(e);
+      if (msg.includes("ERR_CONFLICT:")) {
+        toast.error("This purchase order was changed by another session — please reload and re-apply your edits.");
+      } else {
+        toast.error(`Error: ${msg}`);
+      }
     } finally {
       setIsSubmitting(false);
     }

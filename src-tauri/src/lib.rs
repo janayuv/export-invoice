@@ -4,8 +4,34 @@ mod db;
 use db::schema::get_migrations;
 use db::state::{resolve_db_url, AppDb, AuthSession, DEFAULT_DB_URL};
 
+/// Copies the active DB to {stem}.pre-upgrade.{YYYY-MM-DD}.db in the same directory.
+/// Skips silently if the backup for today already exists. Never aborts startup.
+fn pre_upgrade_backup() {
+    let src = db::state::resolve_db_file_path();
+    if !src.exists() {
+        return;
+    }
+    let stamp = chrono::Local::now().format("%Y-%m-%d");
+    let stem = src.file_stem().unwrap_or_default().to_string_lossy();
+    let bak = src.with_file_name(format!("{stem}.pre-upgrade.{stamp}.db"));
+    if !bak.exists() {
+        if let Err(e) = std::fs::copy(&src, &bak) {
+            eprintln!("[startup] pre-upgrade backup failed: {e}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Apply any staged restore BEFORE migrations run so the plugin pool opens the
+    // restored file.  Errors are logged to stderr but never abort startup.
+    if let Some(dest) = commands::backup::apply_pending_restore() {
+        eprintln!("[startup] restore applied to: {dest}");
+    }
+
+    // Take a pre-upgrade snapshot so a botched migration can be recovered.
+    pre_upgrade_backup();
+
     let db_url = resolve_db_url();
 
     // Always register migrations for the default DB so behaviour is unchanged
@@ -61,6 +87,8 @@ pub fn run() {
             commands::entry::delete_entry,
             commands::settings::save_company_settings,
             commands::settings::save_company_logo,
+            commands::backup::backup_database,
+            commands::backup::validate_and_stage_restore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

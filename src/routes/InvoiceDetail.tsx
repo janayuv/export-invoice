@@ -32,7 +32,7 @@ export function InvoiceDetail() {
   async function handleFinalize() {
     if (!invoice) return;
     try {
-      await finalizeInvoice(invoice.id, currentUser?.id);
+      await finalizeInvoice(invoice.id);
       setInvoice((prev) => prev ? { ...prev, status: "final" } : prev);
       toast.success("Invoice finalized");
     } catch (e) {

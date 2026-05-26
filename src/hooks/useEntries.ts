@@ -145,10 +145,12 @@ export async function createEntry(
 
 export async function updateEntry(
   id: number,
-  data: EntryFormValues
+  data: EntryFormValues,
+  expectedRowVersion: number
 ): Promise<void> {
   await invoke("update_entry", {
     id,
+    expectedRowVersion,
     payload: {
       customer_id:        data.customer_id,
       invoice_id:         data.invoice_id,
