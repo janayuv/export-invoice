@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
 import { exists, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import { appConfigDir, join } from "@tauri-apps/api/path";
 
@@ -86,8 +87,19 @@ export async function withTransaction<T>(
  * Logs errors to the console — does not block the UI.
  * Call once at app startup.
  */
+const ADMIN_TABLES = [
+  "activity_log",
+  "system_agent_settings",
+  "automation_tasks",
+  "incidents",
+] as const;
+
 export async function validateSchema(): Promise<void> {
+  // Rust path: ensure admin tables + any pending plugin migrations on the active DB file.
+  await invoke("ensure_database_schema");
+
   const db = await getDb();
+
   const checks: [string, string][] = [
     ["invoice_items", "sa_number"],
     ["invoices", "show_sa_number"],
@@ -99,6 +111,18 @@ export async function validateSchema(): Promise<void> {
     const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(${table})`);
     if (!cols.some((c) => c.name === col)) {
       console.error(`Schema guard: column ${table}.${col} missing — migrations may not have run.`);
+    }
+  }
+
+  for (const table of ADMIN_TABLES) {
+    const rows = await db.select<{ name: string }[]>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = $1",
+      [table],
+    );
+    if (rows.length === 0) {
+      console.error(
+        `Schema guard: table ${table} missing — restart the app after updating, or re-open Settings → Database.`,
+      );
     }
   }
 }

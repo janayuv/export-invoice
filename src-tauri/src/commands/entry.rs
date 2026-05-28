@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use tauri::State;
 
+use crate::commands::admin::{log_activity, ACT_CREATE_ENTRY, ACT_DELETE_ENTRY, ACT_UPDATE_ENTRY};
 use crate::commands::auth::log_security_event;
 use crate::db::state::{AppDb, AuthSession};
 
@@ -197,7 +198,9 @@ pub fn logic_create_entry(
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    log_activity(conn, session_user_id, "", ACT_CREATE_ENTRY, "entries", &payload.invoice_number);
+    Ok(id)
 }
 
 pub fn logic_update_entry(
@@ -260,6 +263,7 @@ pub fn logic_update_entry(
     if rows == 0 {
         return Err(format!("ERR_CONFLICT: entry {id} was modified by another session"));
     }
+    log_activity(conn, session_user_id, "", ACT_UPDATE_ENTRY, "entries", &payload.invoice_number);
     Ok(())
 }
 
@@ -277,8 +281,12 @@ pub fn logic_delete_entry(
         return Err("ERR_PERMISSION: delete_entry requires admin role".into());
     }
 
+    let inv_no: String = conn
+        .query_row("SELECT invoice_number FROM entries WHERE id=?1", [id], |r| r.get(0))
+        .unwrap_or_default();
     conn.execute("DELETE FROM entries WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
+    log_activity(conn, session_user_id, "", ACT_DELETE_ENTRY, "entries", &inv_no);
     Ok(())
 }
 

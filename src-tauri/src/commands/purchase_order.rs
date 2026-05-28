@@ -1,6 +1,9 @@
 use rusqlite::{Connection, OptionalExtension};
 use tauri::State;
 
+use crate::commands::admin::{
+    log_activity, ACT_CREATE_PO, ACT_DELETE_PO, ACT_SET_PO_STATUS, ACT_UPDATE_PO,
+};
 use crate::commands::auth::log_security_event;
 use crate::db::state::{AppDb, AuthSession};
 
@@ -120,7 +123,7 @@ pub fn logic_create_purchase_order(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
-    let result = (|| -> Result<i64, String> {
+    let result = (|| -> Result<(i64, String), String> {
         let po_number = allocate_po_number(conn, &payload.po_date)?;
 
         conn.execute(
@@ -159,12 +162,13 @@ pub fn logic_create_purchase_order(
             insert_po_item(conn, po_id, item)?;
         }
 
-        Ok(po_id)
+        Ok((po_id, po_number))
     })();
 
     match result {
-        Ok(id) => {
+        Ok((id, po_number)) => {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            log_activity(conn, session_user_id, "", ACT_CREATE_PO, "purchase_orders", &po_number);
             Ok(id)
         }
         Err(e) => {
@@ -265,6 +269,7 @@ pub fn logic_update_purchase_order(
     match result {
         Ok(()) => {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            log_activity(conn, session_user_id, "", ACT_UPDATE_PO, "purchase_orders", &payload.po_number);
             Ok(())
         }
         Err(e) => {
@@ -285,8 +290,14 @@ pub fn logic_delete_purchase_order(
             "ERR_PERMISSION: delete_purchase_order requires admin role");
         return Err("ERR_PERMISSION: delete_purchase_order requires admin role".into());
     }
+    let po_no: Option<String> = conn
+        .query_row("SELECT po_number FROM purchase_orders WHERE id=?1", [id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM purchase_orders WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
+    log_activity(conn, session_user_id, "", ACT_DELETE_PO, "purchase_orders",
+        po_no.as_deref().unwrap_or(""));
     Ok(())
 }
 
@@ -337,6 +348,11 @@ pub fn logic_set_po_status(
         rusqlite::params![new_status, id],
     )
     .map_err(|e| e.to_string())?;
+
+    let po_no: String = conn
+        .query_row("SELECT po_number FROM purchase_orders WHERE id=?1", [id], |r| r.get(0))
+        .unwrap_or_default();
+    log_activity(conn, session_user_id, "", ACT_SET_PO_STATUS, "purchase_orders", &po_no);
 
     Ok(())
 }

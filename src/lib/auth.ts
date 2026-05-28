@@ -95,6 +95,16 @@ export const PERMISSIONS = {
   delete_invoice: ["admin"],
   access_settings: ["admin"],
   manage_users: ["admin"],
+  // Admin Center — defined for future fine-grained use; all routes currently gated by access_settings
+  view_database_mgmt:     ["admin"],
+  view_activity_log:      ["admin"],
+  view_user_activity:     ["admin"],
+  view_system_health:     ["admin"],
+  view_security_center:   ["admin"],
+  view_roles_permissions: ["admin"],
+  view_automation:        ["admin"],
+  view_operations:        ["admin"],
+  view_system_agent:      ["admin"],
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -150,4 +160,16 @@ export async function getAuthAuditLog(
 
 export async function getAuthTelemetryWindow(hours = 24): Promise<AuthTelemetry> {
   return invoke<AuthTelemetry>("get_auth_telemetry_window", { hours });
+}
+
+export interface CurrentSessionInfo {
+  user_id: number;
+  user_name: string;
+  role: UserRole;
+  logged_in_at: string;
+  source: string;
+}
+
+export async function getCurrentSession(): Promise<CurrentSessionInfo> {
+  return invoke<CurrentSessionInfo>("get_current_session");
 }

@@ -332,7 +332,7 @@ pub fn verify_pin(
     // Establish the Rust-side session on success so all subsequent commands
     // can read the trusted role without relying on a frontend-supplied value.
     if let VerifyPinResult::Success { ref user } = result {
-        session.set(user.id, &user.role)?;
+        session.set(user.id, &user.role, &user.name)?;
     }
     Ok(result)
 }
@@ -372,6 +372,36 @@ pub fn update_user_info(
 #[tauri::command]
 pub fn logout(session: State<'_, AuthSession>) -> Result<(), String> {
     session.clear()
+}
+
+/// Active desktop session (single in-memory login). Admin-only read.
+#[derive(Debug, serde::Serialize)]
+pub struct CurrentSessionInfo {
+    pub user_id: i64,
+    pub user_name: String,
+    pub role: String,
+    pub logged_in_at: String,
+    pub source: String,
+}
+
+fn require_admin_session(session: &AuthSession) -> Result<crate::db::state::SessionIdentity, String> {
+    let sess = session.get()?;
+    if sess.role != "admin" {
+        return Err("ERR_PERMISSION: requires admin role".into());
+    }
+    Ok(sess)
+}
+
+#[tauri::command]
+pub fn get_current_session(session: State<'_, AuthSession>) -> Result<CurrentSessionInfo, String> {
+    let sess = require_admin_session(&session)?;
+    Ok(CurrentSessionInfo {
+        user_id: sess.user_id,
+        user_name: sess.user_name,
+        role: sess.role,
+        logged_in_at: sess.logged_in_at,
+        source: "tauri-main-window".to_string(),
+    })
 }
 
 // ── audit read types & commands ────────────────────────────────────────────────
@@ -615,17 +645,21 @@ fn logic_get_security_events(
 #[tauri::command]
 pub fn get_auth_audit_log(
     db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
     limit: Option<i64>,
     user_id: Option<i64>,
 ) -> Result<Vec<AuthAuditEntry>, String> {
+    require_admin_session(&session)?;
     db.with_conn(|conn| logic_get_auth_audit_log(conn, limit, user_id))
 }
 
 #[tauri::command]
 pub fn get_auth_telemetry_window(
     db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
     hours: i64,
 ) -> Result<AuthTelemetry, String> {
+    require_admin_session(&session)?;
     db.with_conn(|conn| logic_get_auth_telemetry_window(conn, hours))
 }
 
@@ -976,7 +1010,7 @@ pub(crate) mod tests {
     #[test]
     fn session_set_and_get_returns_correct_identity() {
         let s = AuthSession::new();
-        s.set(42, "admin").unwrap();
+        s.set(42, "admin", "Admin").unwrap();
         let id = s.get().unwrap();
         assert_eq!(id.user_id, 42);
         assert_eq!(id.role, "admin");
@@ -985,7 +1019,7 @@ pub(crate) mod tests {
     #[test]
     fn session_clear_removes_identity() {
         let s = AuthSession::new();
-        s.set(1, "operator").unwrap();
+        s.set(1, "operator", "Op").unwrap();
         s.clear().unwrap();
         assert!(s.get().is_err(), "session should be empty after clear");
     }
@@ -1005,7 +1039,7 @@ pub(crate) mod tests {
         // Verifies that the role stored in AuthSession is exactly what RBAC
         // logic receives — a viewer stored in session cannot mutate to admin.
         let s = AuthSession::new();
-        s.set(99, "viewer").unwrap();
+        s.set(99, "viewer", "View").unwrap();
         let id = s.get().unwrap();
 
         // Pass stored role to a privileged logic function; expect denial.

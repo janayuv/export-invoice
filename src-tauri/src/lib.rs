@@ -1,6 +1,8 @@
 mod commands;
 mod db;
 
+use tauri::Manager;
+
 use db::schema::get_migrations;
 use db::state::{resolve_db_url, AppDb, AuthSession, DEFAULT_DB_URL};
 
@@ -59,12 +61,26 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+                    let db = handle.state::<AppDb>();
+                    if let Err(e) = db.with_conn(commands::admin::maybe_run_scheduled_agent) {
+                        eprintln!("[agent] scheduled tick failed: {e}");
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::auth::verify_pin,
             commands::auth::logout,
             commands::auth::create_user_pin,
             commands::auth::change_pin,
             commands::auth::update_user_info,
+            commands::auth::get_current_session,
             commands::auth::get_auth_audit_log,
             commands::auth::get_auth_telemetry_window,
             commands::auth::verify_audit_chain,
@@ -88,7 +104,22 @@ pub fn run() {
             commands::settings::save_company_settings,
             commands::settings::save_company_logo,
             commands::backup::backup_database,
+            commands::backup::verify_backup,
             commands::backup::validate_and_stage_restore,
+            commands::admin::ensure_database_schema,
+            commands::admin::admin_db_overview,
+            commands::admin::admin_browse_table,
+            commands::admin::get_activity_log,
+            commands::admin::get_activity_log_count,
+            commands::admin::get_system_health,
+            commands::admin::get_security_trends,
+            commands::admin::get_automation_tasks,
+            commands::admin::get_incidents,
+            commands::admin::create_incident,
+            commands::admin::resolve_incident,
+            commands::admin::get_agent_settings,
+            commands::admin::update_agent_settings,
+            commands::admin::run_agent_task,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

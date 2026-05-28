@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use rusqlite::Connection;
 
+use super::schema::sync_pending_plugin_migrations;
+
 const DEFAULT_DB_FILENAME: &str = "export_invoice.db";
 const APP_IDENTIFIER: &str = "com.exportinvoice.app";
 const SELECTION_FILE: &str = "selected_db.txt";
@@ -61,6 +63,8 @@ pub fn resolve_db_file_path() -> PathBuf {
 pub struct SessionIdentity {
     pub user_id: i64,
     pub role: String,
+    pub user_name: String,
+    pub logged_in_at: String,
 }
 
 /// Tauri managed state holding the currently logged-in user.
@@ -73,9 +77,14 @@ impl AuthSession {
     }
 
     /// Records a new session after successful PIN verification.
-    pub fn set(&self, user_id: i64, role: &str) -> Result<(), String> {
+    pub fn set(&self, user_id: i64, role: &str, user_name: &str) -> Result<(), String> {
         let mut guard = self.0.lock().map_err(|e| e.to_string())?;
-        *guard = Some(SessionIdentity { user_id, role: role.to_string() });
+        *guard = Some(SessionIdentity {
+            user_id,
+            role: role.to_string(),
+            user_name: user_name.to_string(),
+            logged_in_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        });
         Ok(())
     }
 
@@ -162,6 +171,7 @@ impl AppDb {
                      occurred_at TEXT    NOT NULL DEFAULT (datetime('now'))
                  );",
             );
+            sync_pending_plugin_migrations(&conn).map_err(|e| format!("DB init error: {e}"))?;
             *guard = Some(conn);
         }
         f(guard.as_ref().unwrap())

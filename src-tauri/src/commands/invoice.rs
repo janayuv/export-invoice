@@ -1,6 +1,9 @@
 use rusqlite::{Connection, OptionalExtension};
 use tauri::State;
 
+use crate::commands::admin::{
+    log_activity, ACT_CREATE_INVOICE, ACT_DELETE_INVOICE, ACT_FINALIZE_INVOICE, ACT_UPDATE_INVOICE,
+};
 use crate::commands::auth::log_security_event;
 use crate::db::state::{AppDb, AuthSession};
 
@@ -159,7 +162,7 @@ pub fn logic_create_invoice(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
-    let result = (|| -> Result<i64, String> {
+    let result = (|| -> Result<(i64, String), String> {
         let invoice_number = allocate_invoice_number(conn, &payload.invoice_date)?;
 
         conn.execute(
@@ -199,12 +202,13 @@ pub fn logic_create_invoice(
             insert_item(conn, invoice_id, item)?;
         }
 
-        Ok(invoice_id)
+        Ok((invoice_id, invoice_number))
     })();
 
     match result {
-        Ok(id) => {
+        Ok((id, invoice_number)) => {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            log_activity(conn, session_user_id, "", ACT_CREATE_INVOICE, "invoices", &invoice_number);
             Ok(id)
         }
         Err(e) => {
@@ -307,6 +311,7 @@ pub fn logic_update_invoice(
     match result {
         Ok(_) => {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            log_activity(conn, session_user_id, "", ACT_UPDATE_INVOICE, "invoices", &payload.invoice_number);
             Ok(())
         }
         Err(e) => {
@@ -334,6 +339,9 @@ pub fn logic_delete_invoice(conn: &Connection, id: i64, acting_role: &str, sessi
 
     conn.execute("DELETE FROM invoices WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
+
+    log_activity(conn, session_user_id, "", ACT_DELETE_INVOICE, "invoices",
+        inv_no.as_deref().unwrap_or(""));
 
     // Recalculate the fiscal-year sequence so the next allocation continues from
     // the highest number still present, not the deleted one.
@@ -401,6 +409,11 @@ pub fn logic_finalize_invoice(
         rusqlite::params![finalized_by, id],
     )
     .map_err(|e| e.to_string())?;
+
+    let inv_no: String = conn
+        .query_row("SELECT invoice_number FROM invoices WHERE id=?1", [id], |r| r.get(0))
+        .unwrap_or_default();
+    log_activity(conn, session_user_id, "", ACT_FINALIZE_INVOICE, "invoices", &inv_no);
 
     Ok(())
 }

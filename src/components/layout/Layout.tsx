@@ -19,6 +19,15 @@ import {
   Moon,
   RefreshCw,
   ChevronLeft,
+  Database,
+  Activity,
+  UserCheck,
+  HeartPulse,
+  ShieldCheck,
+  Lock,
+  Zap,
+  Gauge,
+  Bot,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -88,6 +97,20 @@ export function Layout() {
       items: [
         { to: "/settings", label: "Settings", icon: Settings, show: can("access_settings") },
         { to: "/users", label: "User Management", icon: Users, show: can("manage_users") },
+      ],
+    },
+    {
+      label: "Admin Center",
+      items: [
+        { to: "/admin/database-management", label: "Database Management", icon: Database,    show: can("access_settings") },
+        { to: "/admin/activity-log",        label: "Activity Log",        icon: Activity,    show: can("access_settings") },
+        { to: "/admin/user-activity",       label: "User Activity",       icon: UserCheck,   show: can("access_settings") },
+        { to: "/admin/system-health",       label: "System Health",       icon: HeartPulse,  show: can("access_settings") },
+        { to: "/admin/security-center",     label: "Security Center",     icon: ShieldCheck, show: can("access_settings") },
+        { to: "/admin/roles-permissions",   label: "Roles & Permissions", icon: Lock,        show: can("access_settings") },
+        { to: "/admin/automation-center",   label: "Automation Center",   icon: Zap,         show: can("access_settings") },
+        { to: "/admin/operations-center",   label: "Operations Center",   icon: Gauge,       show: can("access_settings") },
+        { to: "/admin/system-agent",        label: "System Agent",        icon: Bot,         show: can("access_settings") },
       ],
     },
   ];

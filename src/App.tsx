@@ -18,6 +18,15 @@ import { PurchaseOrderDetail } from "@/routes/PurchaseOrderDetail";
 import { EntryList } from "@/routes/EntryList";
 import { EntryNew } from "@/routes/EntryNew";
 import { ReportEntries } from "@/routes/ReportEntries";
+import { DatabaseManagement } from "@/admin/pages/DatabaseManagement";
+import { ActivityLog }         from "@/admin/pages/ActivityLog";
+import { UserActivity }        from "@/admin/pages/UserActivity";
+import { SystemHealth }        from "@/admin/pages/SystemHealth";
+import { SecurityCenter }      from "@/admin/pages/SecurityCenter";
+import { RolesPermissions }    from "@/admin/pages/RolesPermissions";
+import { AutomationCenter }    from "@/admin/pages/AutomationCenter";
+import { OperationCenter }     from "@/admin/pages/OperationCenter";
+import { SystemAgent }         from "@/admin/pages/SystemAgent";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/lib/auth";
 import type { ReactNode } from "react";
@@ -215,6 +224,17 @@ export default function App() {
                   </PermissionGuard>
                 }
               />
+
+              {/* Admin Center */}
+              <Route path="admin/database-management" element={<PermissionGuard permission="access_settings"><DatabaseManagement /></PermissionGuard>} />
+              <Route path="admin/activity-log"        element={<PermissionGuard permission="access_settings"><ActivityLog /></PermissionGuard>} />
+              <Route path="admin/user-activity"       element={<PermissionGuard permission="access_settings"><UserActivity /></PermissionGuard>} />
+              <Route path="admin/system-health"       element={<PermissionGuard permission="access_settings"><SystemHealth /></PermissionGuard>} />
+              <Route path="admin/security-center"     element={<PermissionGuard permission="access_settings"><SecurityCenter /></PermissionGuard>} />
+              <Route path="admin/roles-permissions"   element={<PermissionGuard permission="access_settings"><RolesPermissions /></PermissionGuard>} />
+              <Route path="admin/automation-center"   element={<PermissionGuard permission="access_settings"><AutomationCenter /></PermissionGuard>} />
+              <Route path="admin/operations-center"   element={<PermissionGuard permission="access_settings"><OperationCenter /></PermissionGuard>} />
+              <Route path="admin/system-agent"        element={<PermissionGuard permission="access_settings"><SystemAgent /></PermissionGuard>} />
             </Route>
           </Routes>
         </AuthGate>

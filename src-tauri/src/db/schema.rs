@@ -507,7 +507,180 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 28,
+            description: "create_activity_log",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     INTEGER REFERENCES users(id),
+                    user_name   TEXT    NOT NULL DEFAULT '',
+                    action      TEXT    NOT NULL,
+                    module      TEXT    NOT NULL,
+                    record_ref  TEXT    NOT NULL DEFAULT '',
+                    details     TEXT    NOT NULL DEFAULT '',
+                    occurred_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id);
+                CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(occurred_at);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 29,
+            description: "create_system_agent_settings",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS system_agent_settings (
+                    id                INTEGER PRIMARY KEY DEFAULT 1,
+                    enabled           BOOLEAN NOT NULL DEFAULT FALSE,
+                    task_interval_sec INTEGER NOT NULL DEFAULT 300,
+                    last_run_at       TEXT    DEFAULT NULL,
+                    notes             TEXT    NOT NULL DEFAULT ''
+                );
+                INSERT OR IGNORE INTO system_agent_settings (id) VALUES (1);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 30,
+            description: "create_automation_tasks",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS automation_tasks (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_name   TEXT    NOT NULL,
+                    status      TEXT    NOT NULL DEFAULT 'pending'
+                                CHECK(status IN ('pending','running','completed','failed')),
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    ran_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                    details     TEXT    NOT NULL DEFAULT ''
+                );
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 31,
+            description: "create_incidents",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS incidents (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    severity         TEXT NOT NULL DEFAULT 'INFO'
+                                     CHECK(severity IN ('INFO','WARNING','CRITICAL','FATAL')),
+                    status           TEXT NOT NULL DEFAULT 'active'
+                                     CHECK(status IN ('active','resolved','suppressed')),
+                    description      TEXT NOT NULL,
+                    resolution_notes TEXT NOT NULL DEFAULT '',
+                    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                    resolved_at      TEXT DEFAULT NULL
+                );
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
+}
+
+/// Admin Center tables (migrations 28–31). Idempotent — safe when the plugin already applied them.
+const ADMIN_MODULE_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS activity_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER REFERENCES users(id),
+    user_name   TEXT    NOT NULL DEFAULT '',
+    action      TEXT    NOT NULL,
+    module      TEXT    NOT NULL,
+    record_ref  TEXT    NOT NULL DEFAULT '',
+    details     TEXT    NOT NULL DEFAULT '',
+    occurred_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(occurred_at);
+
+CREATE TABLE IF NOT EXISTS system_agent_settings (
+    id                INTEGER PRIMARY KEY DEFAULT 1,
+    enabled           BOOLEAN NOT NULL DEFAULT FALSE,
+    task_interval_sec INTEGER NOT NULL DEFAULT 300,
+    last_run_at       TEXT    DEFAULT NULL,
+    notes             TEXT    NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO system_agent_settings (id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS automation_tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_name   TEXT    NOT NULL,
+    status      TEXT    NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','running','completed','failed')),
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    ran_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    details     TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    severity         TEXT NOT NULL DEFAULT 'INFO'
+                     CHECK(severity IN ('INFO','WARNING','CRITICAL','FATAL')),
+    status           TEXT NOT NULL DEFAULT 'active'
+                     CHECK(status IN ('active','resolved','suppressed')),
+    description      TEXT NOT NULL,
+    resolution_notes TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at      TEXT DEFAULT NULL
+);
+"#;
+
+/// Ensures Admin Center tables exist. Called from Rust `AppDb` on every first open.
+pub fn ensure_admin_module_schema(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(ADMIN_MODULE_SQL)
+        .map_err(|e| format!("Admin schema init: {e}"))
+}
+
+fn migration_table_max_version(conn: &rusqlite::Connection) -> Option<i64> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    if !exists {
+        return None;
+    }
+    conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success=1",
+        [],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
+/// Applies plugin migrations that are registered in `_sqlx_migrations` but not yet run.
+/// Keeps the Rust rusqlite connection aligned with tauri-plugin-sql on the same file.
+pub fn sync_pending_plugin_migrations(conn: &rusqlite::Connection) -> Result<(), String> {
+    let Some(applied_max) = migration_table_max_version(conn) else {
+        return ensure_admin_module_schema(conn);
+    };
+
+    let target_max = get_migrations()
+        .iter()
+        .map(|m| m.version)
+        .max()
+        .unwrap_or(0);
+
+    if applied_max < target_max {
+        for m in get_migrations() {
+            if m.version > applied_max {
+                conn.execute_batch(m.sql).map_err(|e| {
+                    format!("Migration v{} ({}): {e}", m.version, m.description)
+                })?;
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO _sqlx_migrations \
+                     (version, description, success, checksum, execution_time) \
+                     VALUES (?1, ?2, 1, X'00', 0)",
+                    rusqlite::params![m.version, m.description],
+                );
+            }
+        }
+    }
+
+    ensure_admin_module_schema(conn)
 }
 
 // ── migration regression tests ────────────────────────────────────────────────
@@ -557,5 +730,36 @@ mod tests {
                 .map(|r| r.unwrap()).collect();
             assert!(tc.contains(&"row_version".into()), "{table} missing row_version");
         }
+
+        // Migration 28: activity_log
+        let al: Vec<String> = conn
+            .prepare("PRAGMA table_info(activity_log)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(al.contains(&"action".into()),      "activity_log missing action");
+        assert!(al.contains(&"module".into()),      "activity_log missing module");
+        assert!(al.contains(&"occurred_at".into()), "activity_log missing occurred_at");
+
+        // Migration 29: system_agent_settings (seed row must exist)
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM system_agent_settings", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "system_agent_settings seed row missing");
+
+        // Migration 30: automation_tasks
+        let at: Vec<String> = conn
+            .prepare("PRAGMA table_info(automation_tasks)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(at.contains(&"task_name".into()), "automation_tasks missing task_name");
+        assert!(at.contains(&"status".into()),    "automation_tasks missing status");
+
+        // Migration 31: incidents
+        let inc: Vec<String> = conn
+            .prepare("PRAGMA table_info(incidents)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(inc.contains(&"severity".into()),    "incidents missing severity");
+        assert!(inc.contains(&"resolved_at".into()), "incidents missing resolved_at");
     }
 }
