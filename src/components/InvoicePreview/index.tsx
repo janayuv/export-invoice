@@ -12,46 +12,138 @@ interface Props {
   company: CompanySettings;
 }
 
+// Palette that mirrors the A4 PDF export
+const C = {
+  border:    "1.5px solid #000",
+  borderThin:"1px solid #000",
+  borderGray:"1px solid #d0d0d0",
+  headerBg:  "#ececec",
+  totalBg:   "#f5f5e8",
+  wordsBg:   "#fbfbf5",
+  packingBg: "#e4e4e4",
+  refHighBg: "#eef0ff",
+  refHighTxt:"#312e81",
+} as const;
+
 export function InvoicePreview({ invoice, company }: Props) {
-  const items = invoice.items ?? [];
+  const items       = invoice.items ?? [];
   const packingList = invoice.packing_list ?? [];
-  const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
-  const totalAmt = items.reduce((sum, i) => sum + i.total_amount, 0);
-  const refs = invoiceReferenceRows(invoice, company);
-  const rateLabel = rateColumnLabel(invoice.incoterm, invoice.currency);
-  const showSa = invoice.show_sa_number ?? true;
+  const totalQty    = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalAmt    = items.reduce((sum, i) => sum + i.total_amount, 0);
+  const refs        = invoiceReferenceRows(invoice, company);
+  const rateLabel   = rateColumnLabel(invoice.incoterm, invoice.currency);
+  const showSa      = invoice.show_sa_number ?? true;
 
   return (
-    <div className="font-sans text-[11px] text-black bg-white">
-      <div className="border border-black">
-      <div className="flex border-b border-black">
-        <div className="w-16 shrink-0 flex items-center justify-center border-r border-black font-bold text-[10px] py-1.5 px-1">
-          {invoice.transport_mode}
+    /* A4 document shell */
+    <div
+      style={{
+        fontFamily: "Courier New, Courier, monospace",
+        fontSize:   "8.5pt",
+        color:      "#000",
+        background: "#fff",
+        maxWidth:   760,
+        margin:     "0 auto",
+        border:     C.border,
+      }}
+    >
+
+      {/* ── 1. Header: Logo | Title | Mode ── */}
+      <div style={{ display: "flex", borderBottom: C.border }}>
+        <div
+          style={{
+            width: "35%",
+            borderRight: C.border,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {invoice.company_logo_base64 ? (
+            <img
+              src={invoice.company_logo_base64}
+              alt="Company logo"
+              style={{ maxHeight: 52, maxWidth: "100%", objectFit: "contain" }}
+            />
+          ) : (
+            <span style={{ fontWeight: 700, fontSize: "9pt" }}>{company.name}</span>
+          )}
         </div>
-        <div className="flex-1 text-center font-bold text-sm py-1.5 tracking-wide">
+        <div
+          style={{
+            flex: 1,
+            textAlign: "center",
+            fontWeight: 800,
+            fontSize: "11pt",
+            padding: "10px 8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            letterSpacing: "0.06em",
+          }}
+        >
           INVOICE CUM PACKING LIST
+        </div>
+        <div
+          style={{
+            width: "19%",
+            borderLeft: C.border,
+            padding: "6px 8px",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ fontSize: "7pt", color: "#555", letterSpacing: "0.05em" }}>
+            TRANSPORT MODE
+          </div>
+          <div style={{ fontWeight: 700, marginTop: 2 }}>{invoice.transport_mode}</div>
         </div>
       </div>
 
-      {/* Exporter | Invoice header */}
-      <div className="flex border-b border-black">
-        <div className="w-1/2 border-r border-black p-2">
-          <div className="text-[9px] text-gray-500 mb-0.5">Exporter</div>
-          <div className="font-bold">{company.name}</div>
-          <div className="whitespace-pre-line mt-0.5">{company.address}</div>
-          {company.gstin && (
-            <div className="mt-1">GSTIN NO: {company.gstin}</div>
-          )}
-          {company.iec && <div className="mt-0.5">IEC: {company.iec}</div>}
-          {company.pan && <div className="mt-0.5">PAN: {company.pan}</div>}
+      {/* ── 2. Exporter | References ── */}
+      <div style={{ display: "flex", borderBottom: C.border }}>
+        <div style={{ width: "48%", borderRight: C.border, padding: "8px 10px" }}>
+          <div style={{ fontSize: "7pt", color: "#666", marginBottom: 2 }}>Exporter</div>
+          <div style={{ fontWeight: 700, fontSize: "9pt" }}>{company.name}</div>
+          <div style={{ whiteSpace: "pre-line", marginTop: 3 }}>{company.address}</div>
+          {company.gstin && <div style={{ marginTop: 4 }}>GSTIN NO: {company.gstin}</div>}
+          {company.iec   && <div style={{ marginTop: 2 }}>IEC: {company.iec}</div>}
+          {company.pan   && <div style={{ marginTop: 2 }}>PAN: {company.pan}</div>}
         </div>
-        <div className="w-1/2 flex flex-col">
-          {/* Invoice No & Date — prominent box at top of right column */}
-          <div className="border-b border-black bg-indigo-50 px-2 py-1.5">
-            <div className="text-[9px] text-gray-600 uppercase tracking-wide">Invoice No &amp; Date</div>
-            <div className="font-bold text-sm mt-0.5">{refs[0].value}</div>
+        <div style={{ width: "52%", display: "flex", flexDirection: "column" }}>
+          {/* First ref row — highlighted */}
+          <div
+            style={{
+              background: C.refHighBg,
+              borderBottom: C.borderThin,
+              padding: "6px 10px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "7pt",
+                color: "#666",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              {refs[0].label}
+            </div>
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: "8.5pt",
+                marginTop: 2,
+                color: C.refHighTxt,
+              }}
+            >
+              {refs[0].value}
+            </div>
           </div>
-          <div className="p-2 space-y-0.5">
+          <div style={{ padding: "6px 10px" }}>
             {refs.slice(1).map((row) => (
               <RefRow key={row.label} label={row.label} value={row.value} />
             ))}
@@ -59,184 +151,243 @@ export function InvoicePreview({ invoice, company }: Props) {
         </div>
       </div>
 
-      {/* Consignee + shipping | buyer + countries + terms */}
-      <div className="flex border-b border-black">
-        <div className="w-1/2 border-r border-black">
-          <div className="p-2 border-b border-black">
-            <div className="text-[9px] text-gray-600">Consignee</div>
-            <div className="font-bold mt-0.5">{invoice.consignee_name}</div>
-            <div className="whitespace-pre-line mt-0.5">{invoice.consignee_address}</div>
-          </div>
-          <ShipRow
-            label="Pre-Carriage by"
-            value={invoice.pre_carriage_by}
-            label2="Place of Receipt by"
-            value2={invoice.place_of_receipt}
-          />
-          <ShipRow label="" value={invoice.pre_carrier} label2="Pre carrier" value2="" />
-          <ShipRow
-            label="Vessel"
-            value={invoice.vessel}
-            label2="Port of Loading"
-            value2={invoice.port_of_loading}
-          />
-          <ShipRow
-            label="Port of Discharge"
-            value={invoice.port_of_discharge}
-            label2="Final Destination"
-            value2={invoice.final_destination}
-            last
-          />
-        </div>
-        <div className="w-1/2 flex flex-col">
-          <div className="p-2 border-b border-black min-h-[52px]">
-            <div className="text-[9px] text-gray-600">Buyer (If other than consignee)</div>
-            <div className="whitespace-pre-line mt-0.5">{invoice.buyer_if_other}</div>
-          </div>
-          <div className="flex border-b border-black">
-            <div className="p-2">
-              <div className="text-[9px] text-gray-600">Country of Origin of Goods</div>
-              <div className="font-semibold mt-0.5">{invoice.country_of_origin}</div>
+      {/* ── 3. Consignee + shipping | Buyer + countries + terms ── */}
+      <div style={{ display: "flex", borderBottom: C.border }}>
+        <div style={{ width: "50%", borderRight: C.border }}>
+          <div style={{ padding: "8px 10px", borderBottom: C.borderThin }}>
+            <div style={{ fontSize: "7pt", color: "#666" }}>Consignee</div>
+            <div style={{ fontWeight: 700, fontSize: "9pt", marginTop: 2 }}>
+              {invoice.consignee_name}
             </div>
+            <div style={{ whiteSpace: "pre-line", marginTop: 2 }}>{invoice.consignee_address}</div>
           </div>
-          <div className="p-2 border-b border-black">
-            <div className="text-[9px] text-gray-600">Terms of payment:</div>
-            <div className="mt-0.5">{invoice.terms_of_payment}</div>
+          <ShipRow label="Pre-Carriage by"   value={invoice.pre_carriage_by}  label2="Place of Receipt by" value2={invoice.place_of_receipt} />
+          <ShipRow label=""                  value={invoice.pre_carrier}       label2="Pre carrier"         value2="" />
+          <ShipRow label="Vessel"            value={invoice.vessel}            label2="Port of Loading"     value2={invoice.port_of_loading} />
+          <ShipRow label="Port of Discharge" value={invoice.port_of_discharge} label2="Final Destination"   value2={invoice.final_destination} last />
+        </div>
+        <div style={{ width: "50%", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "8px 10px", borderBottom: C.borderThin, minHeight: 52 }}>
+            <div style={{ fontSize: "7pt", color: "#666" }}>Buyer (If other than consignee)</div>
+            <div style={{ whiteSpace: "pre-line", marginTop: 2 }}>{invoice.buyer_if_other}</div>
           </div>
-          <div className="p-2 flex-1">
-            <div className="text-[9px] text-gray-600">Incoterm:</div>
-            <div className="mt-0.5">{invoice.incoterm}</div>
+          <div style={{ padding: "6px 10px", borderBottom: C.borderThin }}>
+            <div style={{ fontSize: "7pt", color: "#666" }}>Country of Origin of Goods</div>
+            <div style={{ fontWeight: 600, marginTop: 2 }}>{invoice.country_of_origin}</div>
+          </div>
+          <div style={{ padding: "6px 10px", borderBottom: C.borderThin }}>
+            <div style={{ fontSize: "7pt", color: "#666" }}>Terms of payment:</div>
+            <div style={{ marginTop: 2 }}>{invoice.terms_of_payment}</div>
+          </div>
+          <div style={{ padding: "6px 10px", flex: 1 }}>
+            <div style={{ fontSize: "7pt", color: "#666" }}>Incoterm:</div>
+            <div style={{ marginTop: 2 }}>{invoice.incoterm}</div>
           </div>
         </div>
       </div>
 
-      {/* GOODS section */}
-      <div className="px-2 pt-2 pb-1 border-b border-black bg-slate-50 font-semibold text-[10px] tracking-wide">
+      {/* ── 4. GOODS section ── */}
+      <div
+        style={{
+          padding: "5px 9px",
+          fontWeight: 700,
+          fontSize: "9pt",
+          letterSpacing: "0.12em",
+          background: C.packingBg,
+          borderBottom: C.borderThin,
+        }}
+      >
         GOODS
       </div>
-      <table className="w-full border-collapse text-[10px]">
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "8pt" }}>
         <thead>
-          <tr className="border-b border-black">
-            <Th className={`${showSa ? "w-[5%]" : "w-[6%]"} text-center`}>Sr.</Th>
-            {showSa && <Th className="w-[10%]">SA Number</Th>}
-            <Th className={showSa ? "w-[14%]" : "w-[16%]"}>Part Number</Th>
-            <Th className={showSa ? "w-[38%]" : "w-[42%]"}>Description of goods</Th>
-            <Th className="w-[10%] text-right">Quantity</Th>
-            <Th className={`${showSa ? "w-[11%]" : "w-[13%]"} text-right`}>Rate</Th>
-            <Th className={`${showSa ? "w-[12%]" : "w-[13%]"} text-right`}>Amount</Th>
+          <tr style={{ background: C.headerBg, borderBottom: C.borderThin }}>
+            <Th style={{ width: showSa ? "5%"  : "6%",  textAlign: "center" }}>Sr.</Th>
+            {showSa && <Th style={{ width: "10%" }}>SA No.</Th>}
+            <Th style={{ width: showSa ? "14%" : "16%" }}>Part No.</Th>
+            <Th style={{ width: showSa ? "38%" : "42%" }}>Description of goods</Th>
+            <Th style={{ width: "10%", textAlign: "right" }}>Qty</Th>
+            <Th style={{ width: showSa ? "11%" : "13%", textAlign: "right" }}>
+              Rate<br />({rateLabel})
+            </Th>
+            <Th style={{ width: showSa ? "12%" : "13%", textAlign: "right" }}>
+              Amount<br />({invoice.currency})
+            </Th>
           </tr>
-          <tr className="border-b border-gray-300 text-gray-500">
+          <tr style={{ borderBottom: C.borderGray, color: "#777" }}>
             <Th></Th>
             {showSa && <Th></Th>}
             <Th></Th>
             <Th></Th>
-            <Th className="text-right">NOS</Th>
-            <Th className="text-right">{rateLabel}</Th>
-            <Th className="text-right">{rateLabel}</Th>
+            <Th style={{ textAlign: "right" }}>NOS</Th>
+            <Th style={{ textAlign: "right" }}>{rateLabel}</Th>
+            <Th style={{ textAlign: "right" }}>{rateLabel}</Th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id ?? item.sr_no} className="border-b border-gray-200">
-              <Td className="text-center align-top">{item.sr_no}</Td>
-              {showSa && <Td className="align-top">{item.sa_number}</Td>}
-              <Td className="align-top">{item.part_number}</Td>
-              <Td className="align-top">{item.description}</Td>
-              <Td className="text-right align-top">{fmtAmount(item.quantity, 0)}</Td>
-              <Td className="text-right align-top">{fmtAmount(item.unit_price, 3)}</Td>
-              <Td className="text-right align-top">{fmtAmount(item.total_amount)}</Td>
+            <tr key={item.id ?? item.sr_no} style={{ borderBottom: C.borderGray }}>
+              <Td style={{ textAlign: "center", verticalAlign: "top" }}>{item.sr_no}</Td>
+              {showSa && <Td style={{ verticalAlign: "top" }}>{item.sa_number}</Td>}
+              <Td style={{ fontFamily: "Courier New, monospace", verticalAlign: "top" }}>
+                {item.part_number}
+              </Td>
+              <Td style={{ verticalAlign: "top" }}>{item.description}</Td>
+              <Td style={{ textAlign: "right", verticalAlign: "top" }}>{fmtAmount(item.quantity, 0)}</Td>
+              <Td style={{ textAlign: "right", verticalAlign: "top" }}>{fmtAmount(item.unit_price, 3)}</Td>
+              <Td style={{ textAlign: "right", verticalAlign: "top" }}>{fmtAmount(item.total_amount)}</Td>
             </tr>
           ))}
-          <tr className="border-t border-black font-bold bg-slate-50">
-            <Td colSpan={showSa ? 4 : 3} className="text-right pr-2">TOTAL</Td>
-            <Td className="text-right">{fmtAmount(totalQty, 0)}</Td>
+          <tr style={{ background: C.totalBg, borderTop: C.borderThin, fontWeight: 700 }}>
+            <Td colSpan={showSa ? 4 : 3} style={{ textAlign: "right", paddingRight: 8 }}>TOTAL</Td>
+            <Td style={{ textAlign: "right" }}>{fmtAmount(totalQty, 0)}</Td>
             <Td></Td>
-            <Td className="text-right text-[12px] bg-indigo-100 border-r-0">{fmtAmount(totalAmt)}</Td>
+            <Td style={{ textAlign: "right", background: "#e8e8f8" }}>{fmtAmount(totalAmt)}</Td>
           </tr>
         </tbody>
       </table>
 
-      <div className="border-t border-b border-black p-2 text-[10px]">
-        <span className="font-semibold">(IN WORDS)&nbsp;&nbsp;</span>
+      {/* ── 5. Amount in words ── */}
+      <div
+        style={{
+          padding: "6px 9px",
+          fontSize: "8pt",
+          fontStyle: "italic",
+          background: C.wordsBg,
+          borderTop: C.border,
+          borderBottom: C.border,
+        }}
+      >
+        <span style={{ fontWeight: 700, fontStyle: "normal" }}>(IN WORDS)&nbsp;&nbsp;</span>
         {amountInWords(totalAmt, invoice.currency)}
       </div>
 
-      {/* PACKING section */}
-      <div className="px-2 pt-2 pb-1 border-b border-black bg-slate-50 font-semibold text-[10px] tracking-wide">
+      {/* ── 6. PACKING LIST bar ── */}
+      <div
+        style={{
+          padding: "5px 9px",
+          fontWeight: 700,
+          fontSize: "9pt",
+          letterSpacing: "0.12em",
+          background: C.packingBg,
+          borderBottom: C.borderThin,
+        }}
+      >
         PACKING LIST
       </div>
-      <table className="w-full border-collapse text-[10px]">
+
+      {/* ── 7. Packing table ── */}
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "8pt" }}>
         <thead>
-          <tr className="border-b border-black">
-            <Th className="w-[6%] text-center">Sr.</Th>
-            <Th className="w-[34%]">Marks &amp; Nos</Th>
-            <Th className="w-[14%]">No of Pkgs</Th>
-            <Th className="w-[34%]">Dimensions</Th>
-            <Th className="w-[12%]">Unit</Th>
+          <tr style={{ background: C.headerBg, borderBottom: C.borderThin }}>
+            <Th style={{ width: "6%",  textAlign: "center" }}>Sr.</Th>
+            <Th style={{ width: "34%" }}>Marks &amp; Nos</Th>
+            <Th style={{ width: "14%" }}>No of Pkgs</Th>
+            <Th style={{ width: "34%" }}>Dimensions</Th>
+            <Th style={{ width: "12%" }}>Unit</Th>
           </tr>
         </thead>
         <tbody>
           {packingList.map((row, idx) => (
-            <tr key={idx} className="border-b border-gray-200">
-              <Td className="text-center align-top">{idx + 1}</Td>
-              <Td className="align-top">{row.marks_nos}</Td>
-              <Td className="align-top">{row.no_of_pkgs}</Td>
-              <Td className="align-top">{row.dimensions}</Td>
-              <Td className="align-top">{row.dimensions_unit}</Td>
+            <tr key={idx} style={{ borderBottom: C.borderGray }}>
+              <Td style={{ textAlign: "center", verticalAlign: "top" }}>{idx + 1}</Td>
+              <Td style={{ verticalAlign: "top" }}>{row.marks_nos}</Td>
+              <Td style={{ verticalAlign: "top" }}>{row.no_of_pkgs}</Td>
+              <Td style={{ verticalAlign: "top" }}>{row.dimensions}</Td>
+              <Td style={{ verticalAlign: "top" }}>{row.dimensions_unit}</Td>
             </tr>
           ))}
-          <tr className="border-t border-black bg-slate-50 font-semibold">
-            <Td colSpan={5} className="px-2">
-              Net Weight: {invoice.net_weight} Kgs
-            </Td>
-          </tr>
-          <tr className="bg-slate-50 font-semibold">
-            <Td colSpan={5} className="px-2">
-              Gross Weight: {invoice.gross_weight} Kgs
-            </Td>
-          </tr>
         </tbody>
       </table>
 
-      <div className="p-2 flex justify-between gap-4 border-t border-black">
-        <div className="text-[9px] text-gray-800 max-w-[58%]">
+      {/* ── 8. Weight bar ── */}
+      <div
+        style={{
+          display: "flex",
+          gap: 32,
+          padding: "5px 9px",
+          fontSize: "8pt",
+          borderTop: C.border,
+          borderBottom: C.border,
+        }}
+      >
+        <span>Net Weight: {invoice.net_weight} Kgs</span>
+        <span>Gross Weight: {invoice.gross_weight} Kgs</span>
+      </div>
+
+      {/* ── 9. Declaration + signatory footer ── */}
+      <div style={{ display: "flex", minHeight: 90 }}>
+        <div
+          style={{
+            flex: "0 0 68%",
+            borderRight: C.border,
+            padding: "8px 10px",
+            fontSize: "8pt",
+          }}
+        >
           <p>
             We declare that this invoice shows the actual price of the goods described and that all
             particulars are true and correct.
           </p>
           {company.lut_arn_no && (
-            <p className="mt-2">
+            <p style={{ marginTop: 8 }}>
               Export under LUT ARN: {company.lut_arn_no}
               {company.lut_arn_date
                 ? ` dated ${formatInvoiceDisplayDate(company.lut_arn_date)}`
                 : ""}
             </p>
           )}
-          <div className="mt-3 text-[10px]">
+          <div style={{ marginTop: 12, fontSize: "8pt" }}>
             <div>Place : {company.place}</div>
             <div>Date : {formatInvoiceDisplayDate(invoice.invoice_date)}</div>
           </div>
         </div>
-        <div className="text-right text-[10px] shrink-0">
-          <div className="font-bold">For {company.name}</div>
-          <div className="mt-6 border-t border-gray-500 pt-0.5 min-w-[140px] inline-block text-left">
-            Authorised Signatory
+        <div
+          style={{
+            flex: "0 0 32%",
+            padding: "8px 10px",
+            textAlign: "right",
+            fontSize: "8pt",
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>For {company.name}</div>
+          <div
+            style={{
+              marginTop: 32,
+              borderTop: "1px solid #888",
+              paddingTop: 3,
+              display: "inline-block",
+              minWidth: 140,
+              textAlign: "left",
+            }}
+          >
+            <div>AUTHORIZED SIGNATORY</div>
             {company.signatory_name && (
-              <div className="text-[9px] block">({company.signatory_name})</div>
+              <div style={{ fontSize: "7pt", marginTop: 1 }}>({company.signatory_name})</div>
             )}
           </div>
         </div>
-      </div>
       </div>
     </div>
   );
 }
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function RefRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-1 leading-tight">
-      <span className="text-[9px] text-gray-600 shrink-0 w-[108px]">{label}</span>
-      <span className="font-semibold">{value}</span>
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        lineHeight: 1.4,
+        marginBottom: 3,
+        borderBottom: "1px solid #d0d0d0",
+        paddingBottom: 3,
+      }}
+    >
+      <span style={{ fontSize: "7pt", color: "#666", flexShrink: 0, width: 112 }}>{label}</span>
+      <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
 }
@@ -255,22 +406,39 @@ function ShipRow({
   last?: boolean;
 }) {
   return (
-    <div className={`flex ${last ? "" : "border-b border-black"}`}>
-      <div className="w-1/2 border-r border-black p-1.5">
-        {label && <div className="text-[9px] text-gray-600">{label}</div>}
+    <div style={{ display: "flex", borderBottom: last ? "none" : "1px solid #000" }}>
+      <div style={{ width: "50%", borderRight: "1px solid #000", padding: "5px 8px" }}>
+        {label && <div style={{ fontSize: "7pt", color: "#666" }}>{label}</div>}
         <div>{value}</div>
       </div>
-      <div className="w-1/2 p-1.5">
-        {label2 && <div className="text-[9px] text-gray-600">{label2}</div>}
+      <div style={{ width: "50%", padding: "5px 8px" }}>
+        {label2 && <div style={{ fontSize: "7pt", color: "#666" }}>{label2}</div>}
         <div>{value2}</div>
       </div>
     </div>
   );
 }
 
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  style,
+  colSpan,
+}: {
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  colSpan?: number;
+}) {
   return (
-    <th className={`border border-black p-1 font-semibold text-left ${className ?? ""}`}>
+    <th
+      colSpan={colSpan}
+      style={{
+        border: "1px solid #000",
+        padding: "3px 5px",
+        fontWeight: 700,
+        textAlign: "left",
+        ...style,
+      }}
+    >
       {children}
     </th>
   );
@@ -279,14 +447,21 @@ function Th({ children, className }: { children?: React.ReactNode; className?: s
 function Td({
   children,
   colSpan,
-  className,
+  style,
 }: {
   children?: React.ReactNode;
   colSpan?: number;
-  className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <td colSpan={colSpan} className={`border border-gray-300 p-1 ${className ?? ""}`}>
+    <td
+      colSpan={colSpan}
+      style={{
+        border: "1px solid #d0d0d0",
+        padding: "3px 5px",
+        ...style,
+      }}
+    >
       {children}
     </td>
   );

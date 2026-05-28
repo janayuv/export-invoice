@@ -3,14 +3,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Edit, CheckCircle, Trash2, FileDown, FileSpreadsheet, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { InvoicePreview } from "@/components/InvoicePreview";
 import { getInvoice, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
 import { useSettings } from "@/hooks/useSettings";
 import { exportInvoicePdf } from "@/lib/pdf";
 import { exportInvoiceExcel } from "@/lib/excel";
+import { formatInvoiceDisplayDate } from "@/lib/invoiceDocument";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditInvoiceByStatus } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import type { Invoice } from "@/lib/types";
 
 export function InvoiceDetail() {
@@ -73,78 +74,112 @@ export function InvoiceDetail() {
   }
 
   if (loading) {
-    return <div className="p-6 text-muted-foreground">Loading invoice...</div>;
+    return (
+      <div className="p-[18px] text-[12px] text-zinc-400 dark:text-zinc-600">
+        Loading invoice…
+      </div>
+    );
   }
 
   if (!invoice) {
-    return <div className="p-6 text-destructive">Invoice not found.</div>;
+    return (
+      <div className="p-[18px] text-[12px] text-red-500">
+        Invoice not found.
+      </div>
+    );
   }
 
   const invoiceWithLogo: Invoice = { ...invoice, company_logo_base64: companyLogo };
-
   const isFinal = invoice.status === "final";
-  const canEdit =
-    currentUser != null && canEditInvoiceByStatus(currentUser.role, invoice.status);
+  const canEdit = currentUser != null && canEditInvoiceByStatus(currentUser.role, invoice.status);
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Action bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/invoices")}>
-            <ArrowLeft size={16} />
+    <div className="p-[18px] space-y-3 animate-fade-up">
+
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => navigate("/invoices")}
+          >
+            <ArrowLeft size={15} />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg">{invoice.invoice_number}</span>
-              <Badge variant={isFinal ? "default" : "secondary"}>
-                {isFinal ? "Final" : "Draft"}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">{invoice.invoice_date}</p>
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-bold font-mono text-zinc-900 dark:text-zinc-50 leading-tight truncate">
+              {invoice.invoice_number}
+            </h1>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+              {invoice.consignee_name}
+              {invoice.consignee_name ? " · " : ""}
+              {formatInvoiceDisplayDate(invoice.invoice_date)}
+              {" · "}
+              {invoice.currency}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {/* Status badge */}
+          <span
+            className={cn(
+              "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
+              isFinal
+                ? "bg-indigo-400/15 text-indigo-400"
+                : "bg-amber-400/15 text-amber-400"
+            )}
+          >
+            {invoice.status}
+          </span>
+
           {canEdit && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
             >
-              <Edit size={14} className="mr-1" />
+              <Edit size={13} className="mr-1.5" />
               Edit
             </Button>
           )}
+
           {!isFinal && can("finalize_invoice") && (
             <Button size="sm" onClick={handleFinalize}>
-              <CheckCircle size={14} className="mr-1" />
+              <CheckCircle size={13} className="mr-1.5" />
               Finalize
             </Button>
           )}
+
           {can("export_invoice") && (
             <>
               <Button variant="outline" size="sm" onClick={handlePdf}>
-                <FileDown size={14} className="mr-1" />
-                Export PDF
+                <FileDown size={13} className="mr-1.5" />
+                PDF
               </Button>
               <Button variant="outline" size="sm" onClick={handleExcel}>
-                <FileSpreadsheet size={14} className="mr-1" />
-                Export Excel
+                <FileSpreadsheet size={13} className="mr-1.5" />
+                Excel
               </Button>
             </>
           )}
+
           {can("delete_invoice") && (
             <Button variant="destructive" size="sm" onClick={handleDelete}>
-              <Trash2 size={14} className="mr-1" />
+              <Trash2 size={13} className="mr-1.5" />
               Delete
             </Button>
           )}
         </div>
       </div>
 
-      {/* Invoice Preview */}
+      {/* ── Invoice preview "desk" ── */}
       {settings && (
-        <div className="max-w-4xl mx-auto">
+        <div
+          className="rounded-[4px] overflow-x-auto p-6"
+          style={{ background: "#c0c0c0" }}
+        >
           <InvoicePreview invoice={invoiceWithLogo} company={settings} />
         </div>
       )}

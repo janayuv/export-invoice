@@ -4,12 +4,23 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { Database, Download, FolderOpen, RotateCcw, Save, Upload, X } from "lucide-react";
+import {
+  Building2,
+  Database,
+  Download,
+  FolderOpen,
+  ImageIcon,
+  Landmark,
+  RotateCcw,
+  Save,
+  Upload,
+  UserCheck,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
 import { companySettingsSchema, type CompanySettingsFormValues } from "@/lib/schemas";
@@ -82,7 +93,7 @@ export function Settings() {
           { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
         ],
       });
-      if (typeof selected !== "string") return; // cancelled
+      if (typeof selected !== "string") return;
       await setDbPath(selected);
       setDbPathState(selected);
       toast.success("Database selected — restart the app to load it");
@@ -108,7 +119,7 @@ export function Settings() {
         defaultPath: "export_invoice_backup.db",
         filters: [{ name: "SQLite Database", extensions: ["db"] }],
       });
-      if (!destPath) return; // cancelled
+      if (!destPath) return;
       setBackingUp(true);
       await invoke("backup_database", { destPath });
       toast.success("Backup saved successfully");
@@ -127,7 +138,7 @@ export function Settings() {
         directory: false,
         filters: [{ name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] }],
       });
-      if (typeof sourcePath !== "string") return; // cancelled
+      if (typeof sourcePath !== "string") return;
       setRestoring(true);
       await invoke("validate_and_stage_restore", { sourcePath });
       toast.success("Backup validated — restart the app to complete restore");
@@ -146,132 +157,145 @@ export function Settings() {
   const onSubmit = async (data: CompanySettingsFormValues) => {
     try {
       await saveSettings(data);
-      toast.success("Settings saved successfully");
+      toast.success("Settings saved");
     } catch (e) {
       toast.error(`Failed to save: ${e}`);
     }
   };
 
   if (loading) {
-    return <div className="p-6 text-muted-foreground">Loading settings...</div>;
+    return (
+      <div className="p-[18px] text-[12px] text-zinc-400 dark:text-zinc-600">
+        Loading settings…
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Company Settings</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Exporter details printed on every invoice
-        </p>
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="p-[18px] space-y-3 animate-fade-up"
+    >
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[20px] font-bold text-zinc-900 dark:text-zinc-50">Settings</h1>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Company information and export configuration
+          </p>
+        </div>
+        <Button type="submit" size="sm" disabled={isSubmitting}>
+          <Save size={13} className="mr-1.5" />
+          {isSubmitting ? "Saving…" : "Save Changes"}
+        </Button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Exporter Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Field label="Company Name *" error={errors.name?.message}>
-              <Input {...register("name")} placeholder="INZI CONTROLS INDIA LIMITED" />
-            </Field>
-            <Field label="Address *" error={errors.address?.message}>
-              <Textarea
-                {...register("address")}
-                placeholder="SF 72 BANGALORE HIGHWAYS IRRUNGATTUKOTTAI&#10;VILLAGE, SRIPERUMBUDUR"
-                rows={3}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="GSTIN" error={errors.gstin?.message}>
-                <Input {...register("gstin")} placeholder="33AAACP5832C1ZW" />
-              </Field>
-              <Field label="PAN" error={errors.pan?.message}>
-                <Input {...register("pan")} placeholder="AAACP5832C" />
-              </Field>
-            </div>
-            <Field label="IEC Code" error={errors.iec?.message}>
-              <Input {...register("iec")} placeholder="IEC Code" />
-            </Field>
-          </CardContent>
-        </Card>
+      {/* ── Card 1: Exporter Information ── */}
+      <SettingsCard
+        icon={Building2}
+        title="Exporter Information"
+        description="Printed on every invoice header."
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Company Name *" error={errors.name?.message} className="col-span-2">
+            <Input
+              {...register("name")}
+              placeholder="INZI CONTROLS INDIA LIMITED"
+              className="text-[12px]"
+            />
+          </Field>
+          <Field label="GSTIN" error={errors.gstin?.message}>
+            <Input {...register("gstin")} placeholder="33AAACP5832C1ZW" className="font-mono text-[12px]" />
+          </Field>
+          <Field label="PAN" error={errors.pan?.message}>
+            <Input {...register("pan")} placeholder="AAACP5832C" className="font-mono text-[12px]" />
+          </Field>
+          <Field label="IEC Code" error={errors.iec?.message} className="col-span-2">
+            <Input {...register("iec")} placeholder="IEC0000000000" className="font-mono text-[12px]" />
+          </Field>
+          <Field label="Address *" error={errors.address?.message} className="col-span-2">
+            <Textarea
+              {...register("address")}
+              placeholder={"SF 72 BANGALORE HIGHWAYS IRRUNGATTUKOTTAI\nVILLAGE, SRIPERUMBUDUR"}
+              rows={3}
+              className="text-[12px] resize-none"
+            />
+          </Field>
+        </div>
+      </SettingsCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Banking & Export Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Bank Name" error={errors.bank_name?.message}>
-                <Input {...register("bank_name")} />
-              </Field>
-              <Field label="Bank Account No" error={errors.bank_account?.message}>
-                <Input {...register("bank_account")} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="IFSC Code" error={errors.ifsc?.message}>
-                <Input {...register("ifsc")} />
-              </Field>
-              <Field label="SWIFT Code" error={errors.swift?.message}>
-                <Input {...register("swift")} />
-              </Field>
-            </div>
-            <Field label="Bank AD Code" error={errors.bank_ad_code?.message}>
-              <Input {...register("bank_ad_code")} placeholder="6850001" />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="LUT ARN No" error={errors.lut_arn_no?.message}>
-                <Input {...register("lut_arn_no")} placeholder="AD330426032163J" />
-              </Field>
-              <Field label="LUT ARN Date" error={errors.lut_arn_date?.message}>
-                <Input {...register("lut_arn_date")} type="date" />
-              </Field>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Card 2: Banking & Export Details ── */}
+      <SettingsCard
+        icon={Landmark}
+        title="Banking & Export Details"
+        description="Bank details and export references printed on documents."
+      >
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Bank Name" error={errors.bank_name?.message}>
+            <Input {...register("bank_name")} className="text-[12px]" />
+          </Field>
+          <Field label="Account No" error={errors.bank_account?.message}>
+            <Input {...register("bank_account")} className="font-mono text-[12px]" />
+          </Field>
+          <Field label="IFSC Code" error={errors.ifsc?.message}>
+            <Input {...register("ifsc")} className="font-mono text-[12px]" />
+          </Field>
+          <Field label="SWIFT Code" error={errors.swift?.message}>
+            <Input {...register("swift")} className="font-mono text-[12px]" />
+          </Field>
+          <Field label="Bank AD Code" error={errors.bank_ad_code?.message}>
+            <Input {...register("bank_ad_code")} placeholder="6850001" className="font-mono text-[12px]" />
+          </Field>
+          {/* spacer to keep grid aligned */}
+          <div />
+          <Field label="LUT ARN No" error={errors.lut_arn_no?.message}>
+            <Input {...register("lut_arn_no")} placeholder="AD330426032163J" className="font-mono text-[12px]" />
+          </Field>
+          <Field label="LUT ARN Date" error={errors.lut_arn_date?.message}>
+            <Input {...register("lut_arn_date")} type="date" className="text-[12px]" />
+          </Field>
+        </div>
+      </SettingsCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Signatory Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Place (for signature)" error={errors.place?.message}>
-                <Input {...register("place")} placeholder="IRRUNGATTUKOTTAI" />
-              </Field>
-              <Field label="Authorised Signatory Name" error={errors.signatory_name?.message}>
-                <Input {...register("signatory_name")} placeholder="S.DINESH" />
-              </Field>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Card 3: Signatory Details ── */}
+      <SettingsCard
+        icon={UserCheck}
+        title="Signatory Details"
+        description="Printed in the signature block of every invoice."
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Place (for signature)" error={errors.place?.message}>
+            <Input {...register("place")} placeholder="IRRUNGATTUKOTTAI" className="text-[12px]" />
+          </Field>
+          <Field label="Authorised Signatory Name" error={errors.signatory_name?.message}>
+            <Input {...register("signatory_name")} placeholder="S.DINESH" className="text-[12px]" />
+          </Field>
+        </div>
+      </SettingsCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Company Logo</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {settings?.company_logo_base64 ? (
-              <div className="flex items-start gap-4">
-                <img
-                  src={settings.company_logo_base64}
-                  alt="Company logo"
-                  className="max-h-24 max-w-48 object-contain border rounded"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLogoRemove}
-                >
-                  <X size={14} className="mr-1" />
-                  Remove
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No logo uploaded</p>
-            )}
-            <div>
+      {/* ── Card 4: Company Logo ── */}
+      <SettingsCard
+        icon={ImageIcon}
+        title="Company Logo"
+        description="Shown in the invoice header. PNG, JPG, or SVG · max 2 MB · saved immediately on selection."
+      >
+        <div className="flex items-start gap-4">
+          {/* Preview or placeholder box */}
+          {settings?.company_logo_base64 ? (
+            <img
+              src={settings.company_logo_base64}
+              alt="Company logo"
+              className="h-14 w-20 object-contain rounded border border-zinc-200 dark:border-zinc-700 bg-white shrink-0"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-14 w-20 rounded border-2 border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400 dark:text-zinc-600 shrink-0">
+              <Building2 size={16} />
+              <span className="text-[9px] mt-1">No logo</span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -285,67 +309,70 @@ export function Settings() {
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload size={14} className="mr-1" />
-                {settings?.company_logo_base64 ? "Replace Logo" : "Upload Logo"}
+                <Upload size={13} className="mr-1.5" />
+                {settings?.company_logo_base64 ? "Replace" : "Upload Logo"}
               </Button>
-              <p className="text-xs text-muted-foreground mt-1">
-                PNG, JPG, SVG · max 2 MB · saved immediately on selection
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Database size={16} />
-              Database File
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <Label className="text-sm">Active database</Label>
-              <p className="text-sm font-mono break-all rounded border bg-muted/40 px-2 py-1.5">
-                {dbPath ?? `${DEFAULT_DB_PATH} (default)`}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={handleDbBrowse}>
-                <FolderOpen size={14} className="mr-1" />
-                Browse…
-              </Button>
-              {dbPath && (
-                <Button type="button" variant="outline" size="sm" onClick={handleDbReset}>
-                  <RotateCcw size={14} className="mr-1" />
-                  Use Default
+              {settings?.company_logo_base64 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-500 dark:text-zinc-400 hover:text-red-500"
+                  onClick={handleLogoRemove}
+                >
+                  <X size={13} className="mr-1" />
+                  Remove
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Pick a .db / .sqlite file to use instead of the bundled database.
-              Restart the app after changing this for it to take effect.
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+              Restart not required after logo change.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </SettingsCard>
 
-        <Button type="submit" disabled={isSubmitting}>
-          <Save size={16} className="mr-2" />
-          {isSubmitting ? "Saving..." : "Save Settings"}
-        </Button>
-      </form>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Download size={16} />
-            Data Backup &amp; Restore
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Create a full backup of the active database, or restore from a previous backup.
-            A pre-upgrade backup is also taken automatically each time the app starts.
+      {/* ── Card 5: Database File ── */}
+      <SettingsCard
+        icon={Database}
+        title="Database File"
+        description="Switch to a different SQLite database. Requires app restart."
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400 mb-1">
+              Active database
+            </p>
+            <p className="text-[12px] font-mono break-all bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-zinc-700 dark:text-zinc-300">
+              {dbPath ?? `${DEFAULT_DB_PATH} (default)`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={handleDbBrowse}>
+              <FolderOpen size={13} className="mr-1.5" />
+              Browse…
+            </Button>
+            {dbPath && (
+              <Button type="button" variant="outline" size="sm" onClick={handleDbReset}>
+                <RotateCcw size={13} className="mr-1.5" />
+                Use Default
+              </Button>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+            Pick a .db / .sqlite file to use instead of the bundled database.
+            Restart the app after changing.
           </p>
+        </div>
+      </SettingsCard>
+
+      {/* ── Card 6: Backup & Restore ── */}
+      <SettingsCard
+        icon={Download}
+        title="Data Backup & Restore"
+        description="Create a full backup or restore from a previous one. A pre-upgrade backup is taken automatically on each launch."
+      >
+        <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -354,7 +381,7 @@ export function Settings() {
               onClick={handleBackup}
               disabled={backingUp || !can("access_settings")}
             >
-              <Download size={14} className="mr-1" />
+              <Download size={13} className="mr-1.5" />
               {backingUp ? "Backing up…" : "Backup Now"}
             </Button>
             <Button
@@ -364,17 +391,49 @@ export function Settings() {
               onClick={handleRestore}
               disabled={restoring || !can("access_settings")}
             >
-              <FolderOpen size={14} className="mr-1" />
+              <FolderOpen size={13} className="mr-1.5" />
               {restoring ? "Validating…" : "Restore from Backup"}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            After choosing a backup file, the app will validate its integrity then stage the
-            restore. Restart the app to complete. The current database is not overwritten until
-            restart.
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+            After choosing a backup file the app validates integrity then stages the restore.
+            Restart to complete — the current database is not overwritten until restart.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsCard>
+    </form>
+  );
+}
+
+// ── Helper components ──────────────────────────────────────────────────────────
+
+function SettingsCard({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+      <div className="flex items-start gap-2.5 px-[14px] py-[12px] border-b border-zinc-200 dark:border-zinc-800">
+        <div className="mt-0.5 w-[26px] h-[26px] rounded-[6px] flex items-center justify-center bg-indigo-400/15 text-indigo-400 shrink-0">
+          <Icon size={13} />
+        </div>
+        <div>
+          <p className="text-[14px] font-bold text-zinc-900 dark:text-zinc-50 leading-tight">
+            {title}
+          </p>
+          {description && (
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{description}</p>
+          )}
+        </div>
+      </div>
+      <div className="p-[14px]">{children}</div>
     </div>
   );
 }
@@ -383,16 +442,20 @@ function Field({
   label,
   children,
   error,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string;
+  className?: string;
 }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-sm">{label}</Label>
+    <div className={`space-y-1 ${className ?? ""}`}>
+      <Label className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
+        {label}
+      </Label>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
     </div>
   );
 }

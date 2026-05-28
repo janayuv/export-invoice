@@ -8,7 +8,6 @@ import {
   CheckCircle,
   UserCheck,
   FileText,
-  FilePlus2,
   Users,
   Ship,
   Package,
@@ -20,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -47,6 +45,7 @@ import {
   type PurchaseOrderSummary,
 } from "@/hooks/usePurchaseOrders";
 import { Combobox } from "@/components/ui/combobox";
+import { cn } from "@/lib/utils";
 
 const PO_SELECT_NONE = "__none__";
 
@@ -63,6 +62,17 @@ const INCOTERM_OPTIONS: { value: string; label: string }[] = [
   { value: "DPU", label: "DPU — Delivered at Place Unloaded" },
   { value: "DDP", label: "DDP — Delivered Duty Paid" },
 ];
+
+// TOC section definitions (as const preserves literal types)
+const TOC_ITEMS = [
+  { id: "sec-customerpo", label: "Customer & PO",   icon: Users     },
+  { id: "sec-details",    label: "Invoice Details", icon: FileText  },
+  { id: "sec-consignee",  label: "Consignee",       icon: UserCheck },
+  { id: "sec-shipping",   label: "Shipping",        icon: Ship      },
+  { id: "sec-goods",      label: "Goods",           icon: Package   },
+  { id: "sec-packing",    label: "Packing",         icon: Boxes     },
+  { id: "sec-weight",     label: "Weight & Notes",  icon: Scale     },
+] as const;
 
 export function InvoiceNew() {
   const navigate = useNavigate();
@@ -84,6 +94,18 @@ export function InvoiceNew() {
     purchaseOrderId: number | null;
     consigneeName: string;
   } | null>(null);
+
+  // ── Scroll-tracking refs ────────────────────────────────────────────────────
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const secCustomerPORef   = useRef<HTMLDivElement>(null);
+  const secDetailsRef      = useRef<HTMLDivElement>(null);
+  const secConsigneeRef    = useRef<HTMLDivElement>(null);
+  const secShippingRef     = useRef<HTMLDivElement>(null);
+  const secGoodsRef        = useRef<HTMLDivElement>(null);
+  const secPackingRef      = useRef<HTMLDivElement>(null);
+  const secWeightRef       = useRef<HTMLDivElement>(null);
+
+  const [activeSection, setActiveSection] = useState("sec-customerpo");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const form = useForm<InvoiceFormSchema, any, InvoiceFormSchema>({
@@ -156,6 +178,7 @@ export function InvoiceNew() {
   const transportMode = useWatch({ control: form.control, name: "transport_mode" }) ?? "BY SEA";
   const incoterm      = useWatch({ control: form.control, name: "incoterm" }) ?? "";
   const showSaNumber  = (useWatch({ control: form.control, name: "show_sa_number" }) ?? true) as boolean;
+  const invoiceNumber = useWatch({ control: form.control, name: "invoice_number" });
 
   // Pre-fill invoice number and settings defaults for new invoice
   useEffect(() => {
@@ -257,6 +280,52 @@ export function InvoiceNew() {
   useEffect(() => {
     getCustomers().then(setCustomers);
   }, []);
+
+  // Scroll tracking — stable ref array avoids closure issues
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const sections = [
+      { id: "sec-customerpo", ref: secCustomerPORef },
+      { id: "sec-details",    ref: secDetailsRef    },
+      { id: "sec-consignee",  ref: secConsigneeRef  },
+      { id: "sec-shipping",   ref: secShippingRef   },
+      { id: "sec-goods",      ref: secGoodsRef      },
+      { id: "sec-packing",    ref: secPackingRef     },
+      { id: "sec-weight",     ref: secWeightRef     },
+    ];
+
+    function handleScroll() {
+      const containerTop = container!.getBoundingClientRect().top;
+      const threshold    = containerTop + 80;
+      let current = "sec-customerpo";
+      for (const { id: secId, ref } of sections) {
+        const el = ref.current;
+        if (el && el.getBoundingClientRect().top <= threshold) {
+          current = secId;
+        }
+      }
+      setActiveSection(current);
+    }
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []); // runs once — all section refs are stable
+
+  function scrollToSection(sectionId: string) {
+    const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
+      "sec-customerpo": secCustomerPORef,
+      "sec-details":    secDetailsRef,
+      "sec-consignee":  secConsigneeRef,
+      "sec-shipping":   secShippingRef,
+      "sec-goods":      secGoodsRef,
+      "sec-packing":    secPackingRef,
+      "sec-weight":     secWeightRef,
+    };
+    refMap[sectionId]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveSection(sectionId);
+  }
 
   function clearPoDerivedFields() {
     setValue("purchase_order_id", null);
@@ -402,324 +471,393 @@ export function InvoiceNew() {
     }
   }
 
+  // Badge shown in the sticky header
+  const headerBadge = isEdit ? invoiceNumber : generatedNumber;
+
   return (
     <FormProvider {...form}>
       <form
         onSubmit={handleSubmit((data) => onSubmit(data))}
-        className="min-h-full bg-muted/30"
+        className="flex flex-col h-full overflow-hidden"
       >
-        <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-          <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <FilePlus2 className="h-5 w-5" aria-hidden />
+
+        {/* ── Sticky header (56px) ── */}
+        <header className="h-14 shrink-0 flex items-center justify-between px-4 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft size={15} />
+            </Button>
+            <span className="text-[14px] font-bold text-zinc-900 dark:text-zinc-50">
+              {isEdit ? "Edit Invoice" : "New Invoice"}
+            </span>
+            {headerBadge && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full font-mono text-[11px] font-semibold bg-indigo-400/15 text-indigo-400">
+                {headerBadge}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => navigate(-1)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="outline" size="sm" disabled={isSubmitting}>
+              <Save size={13} className="mr-1.5" />
+              {isEdit && editingStatus === "final" ? "Save Changes" : "Save Draft"}
+            </Button>
+            {(!isEdit || editingStatus === "draft") && can("finalize_invoice") && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSubmitting}
+                onClick={handleSubmit((data) => onSubmit(data, true))}
+              >
+                <CheckCircle size={13} className="mr-1.5" />
+                Finalize
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {/* ── Two-panel body ── */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* Left: TOC rail (168px fixed) */}
+          <nav className="w-[168px] shrink-0 overflow-y-auto bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 py-3 px-2 space-y-0.5">
+            {TOC_ITEMS.map(({ id: secId, label, icon: Icon }) => (
+              <button
+                key={secId}
+                type="button"
+                onClick={() => scrollToSection(secId)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2.5 py-[7px] rounded-[6px] text-[12px] text-left transition-colors duration-[80ms]",
+                  activeSection === secId
+                    ? "bg-indigo-400/15 text-indigo-400 font-semibold"
+                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-50"
+                )}
+              >
+                <Icon size={12} className="shrink-0" />
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Right: Scrollable form */}
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-[#0c0c0f] p-[18px] space-y-3"
+          >
+
+            {/* §1 — Customer & PO */}
+            <SectionCard
+              id="sec-customerpo"
+              sectionRef={secCustomerPORef}
+              icon={Users}
+              title="Customer & Purchase Order"
+              description="Select a customer to prefill shipping details and optionally load a purchase order."
+            >
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="w-[84px] shrink-0 text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
+                    Customer
+                  </span>
+                  <Combobox
+                    className="flex-1 min-w-[200px] max-w-sm"
+                    value={selectedCustomerId}
+                    onValueChange={(v) => { void applyCustomer(v); }}
+                    placeholder="Search and select a customer…"
+                    searchPlaceholder="Type customer name or country…"
+                    options={customers.map((c) => ({
+                      value: String(c.id),
+                      label: c.name,
+                      sublabel: c.currency,
+                    }))}
+                  />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                    {isEdit ? "Edit Invoice" : "New Invoice"}
-                  </h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Commercial export invoice and packing list
-                  </p>
-                  {generatedNumber && !isEdit && (
-                    <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
-                      {generatedNumber}
+                {selectedCustomerId && (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="w-[84px] shrink-0 text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
+                      Purchase Order
                     </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => navigate(-1)}>
-                  <ArrowLeft size={16} className="mr-1" />
-                  Cancel
-                </Button>
-                <Button type="submit" variant="outline" disabled={isSubmitting}>
-                  <Save size={16} className="mr-1" />
-                  {isEdit && editingStatus === "final" ? "Save Changes" : "Save Draft"}
-                </Button>
-                {(!isEdit || editingStatus === "draft") && can("finalize_invoice") && (
-                  <Button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleSubmit((data) => onSubmit(data, true))}
-                  >
-                    <CheckCircle size={16} className="mr-1" />
-                    Finalize
-                  </Button>
+                    <Select
+                      value={selectedPoId || PO_SELECT_NONE}
+                      onValueChange={(v) => { if (v) void applyPurchaseOrder(v); }}
+                      disabled={loadingPOs}
+                    >
+                      <SelectTrigger className="flex-1 min-w-[260px] max-w-xl text-[12px] h-8">
+                        <SelectValue>
+                          {(value: string) => {
+                            if (loadingPOs) return "Loading purchase orders…";
+                            if (!value || value === PO_SELECT_NONE) {
+                              return customerPOs.length
+                                ? "None — enter manually"
+                                : "No purchase orders for this customer";
+                            }
+                            const po = customerPOs.find((p) => String(p.id) === value);
+                            if (!po) return "Loading purchase orders…";
+                            return [po.customer_po_no || po.po_number, po.po_date, po.status]
+                              .filter(Boolean)
+                              .join(" · ");
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent
+                        alignItemWithTrigger={false}
+                        className="min-w-[var(--anchor-width)] w-auto max-w-[560px]"
+                      >
+                        <SelectItem value={PO_SELECT_NONE}>None — enter manually</SelectItem>
+                        {customerPOs.map((po) => (
+                          <SelectItem key={po.id} value={String(po.id)}>
+                            {[po.customer_po_no || po.po_number, po.po_date, po.status]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
               </div>
-            </div>
-          </header>
+            </SectionCard>
 
-          {/* Customer + purchase order loaders */}
-          {customers.length > 0 && (
-            <Card className="overflow-visible shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Customer & Purchase Order</CardTitle>
-                <CardDescription>Select a customer to prefill shipping details and optionally load a purchase order.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <UserCheck size={16} className="shrink-0 text-primary" />
-                <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
-                  Customer
-                </span>
-                <Combobox
-                  className="flex-1 min-w-[200px] max-w-sm"
-                  value={selectedCustomerId}
-                  onValueChange={(v) => { void applyCustomer(v); }}
-                  placeholder="Search and select a customer…"
-                  searchPlaceholder="Type customer name or country…"
-                  options={customers.map((c) => ({
-                    value: String(c.id),
-                    label: c.name,
-                    sublabel: c.currency,
-                  }))}
-                />
-              </div>
-              {selectedCustomerId && (
-                <div className="flex flex-wrap items-center gap-3 pl-7">
-                  <FileText size={16} className="shrink-0 text-primary" />
-                  <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
-                    Purchase Order
-                  </span>
+            {/* §2 — Invoice Details */}
+            <SectionCard
+              id="sec-details"
+              sectionRef={secDetailsRef}
+              icon={FileText}
+              title="Invoice Details"
+              description="Reference details, currency, and commercial metadata."
+            >
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Invoice Number *" error={errors.invoice_number?.message}>
+                  <Input
+                    {...register("invoice_number")}
+                    readOnly
+                    className="opacity-65 font-mono text-[12px] bg-zinc-100 dark:bg-zinc-800"
+                  />
+                </Field>
+                <Field label="Invoice Date *" error={errors.invoice_date?.message}>
+                  <Input type="date" {...register("invoice_date")} className="text-[12px]" />
+                </Field>
+                <Field label="Transport Mode" error={errors.transport_mode?.message}>
                   <Select
-                    value={selectedPoId || PO_SELECT_NONE}
-                    onValueChange={(v) => { if (v) void applyPurchaseOrder(v); }}
-                    disabled={loadingPOs}
+                    value={transportMode}
+                    onValueChange={(v) => setValue("transport_mode", v as InvoiceFormSchema["transport_mode"])}
                   >
-                    <SelectTrigger className="flex-1 min-w-[260px] max-w-xl">
-                      <SelectValue>
+                    <SelectTrigger className="text-[12px] h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BY SEA">BY SEA</SelectItem>
+                      <SelectItem value="BY AIR">BY AIR</SelectItem>
+                      <SelectItem value="BY ROAD">BY ROAD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Buyer's Order No" error={errors.buyer_order_no?.message}>
+                  <Input {...register("buyer_order_no")} placeholder="CTRD-20260225-03" className="text-[12px]" />
+                </Field>
+                <Field label="Duty Drawback" error={errors.duty_drawback?.message}>
+                  <Input {...register("duty_drawback")} placeholder="ALL INDUSTRY RATE" className="text-[12px]" />
+                </Field>
+                <Field label="HS Code" error={errors.hs_code?.message}>
+                  <Input {...register("hs_code")} placeholder="84148090" className="font-mono text-[12px]" />
+                </Field>
+                <Field label="LUT ARN No" error={undefined}>
+                  <Input
+                    readOnly
+                    placeholder="From Settings"
+                    value={settings?.lut_arn_no ?? ""}
+                    className="opacity-65 text-[12px] font-mono bg-zinc-100 dark:bg-zinc-800"
+                  />
+                </Field>
+                <Field label="Other Reference(s)" error={errors.other_references?.message}>
+                  <Input {...register("other_references")} placeholder="NIL" className="text-[12px]" />
+                </Field>
+                <Field label="Currency" error={errors.currency?.message}>
+                  <Select
+                    value={currency}
+                    onValueChange={(v) => setValue("currency", v as InvoiceFormSchema["currency"])}
+                  >
+                    <SelectTrigger className="text-[12px] h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["USD", "EUR", "GBP", "AED", "INR"].map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+            </SectionCard>
+
+            {/* §3 — Consignee & Buyer */}
+            <SectionCard
+              id="sec-consignee"
+              sectionRef={secConsigneeRef}
+              icon={UserCheck}
+              title="Consignee & Buyer"
+              description="Maintain consignee and buyer identity exactly as required in shipping documents."
+            >
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <Field label="Consignee Name *" error={errors.consignee_name?.message}>
+                    <Input {...register("consignee_name")} placeholder="CTR CO.,LTD." className="text-[12px]" />
+                  </Field>
+                  <Field label="Consignee Address *" error={errors.consignee_address?.message}>
+                    <Textarea
+                      {...register("consignee_address")}
+                      placeholder={"# 68-26 Daehapsaneopdanji-ro, Hap-ri,\nDaehap-myeon, Korea. Zip Code: 50307"}
+                      rows={4}
+                      className="text-[12px] resize-none"
+                    />
+                  </Field>
+                </div>
+                <div className="space-y-3">
+                  <Field label="Buyer (if other than consignee)" error={errors.buyer_if_other?.message}>
+                    <Textarea
+                      {...register("buyer_if_other")}
+                      rows={4}
+                      placeholder="Leave blank if same as consignee"
+                      className="text-[12px] resize-none"
+                    />
+                  </Field>
+                </div>
+              </div>
+            </SectionCard>
+
+            {/* §4 — Shipping Details */}
+            <SectionCard
+              id="sec-shipping"
+              sectionRef={secShippingRef}
+              icon={Ship}
+              title="Shipping Details"
+              description="Port and movement information used in invoice, packing list, and exports."
+            >
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Country of Origin" error={errors.country_of_origin?.message}>
+                  <Input {...register("country_of_origin")} defaultValue="INDIA" className="text-[12px]" />
+                </Field>
+                <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
+                  <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" className="text-[12px]" />
+                </Field>
+                <Field label="Incoterm (Delivery)" error={errors.incoterm?.message}>
+                  <Select
+                    value={incoterm}
+                    onValueChange={(v) => setValue("incoterm", v ?? "")}
+                  >
+                    <SelectTrigger className="text-[12px] h-8 w-full">
+                      <SelectValue placeholder="Select Incoterm…">
                         {(value: string) => {
-                          if (loadingPOs) return "Loading purchase orders…";
-                          if (!value || value === PO_SELECT_NONE) {
-                            return customerPOs.length
-                              ? "None — enter manually"
-                              : "No purchase orders for this customer";
-                          }
-                          const po = customerPOs.find((p) => String(p.id) === value);
-                          if (!po) return "Loading purchase orders…";
-                          return [po.customer_po_no || po.po_number, po.po_date, po.status]
-                            .filter(Boolean)
-                            .join(" · ");
+                          if (!value) return "Select Incoterm…";
+                          const found = INCOTERM_OPTIONS.find((o) => o.value === value);
+                          return found ? found.label : value;
                         }}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent
                       alignItemWithTrigger={false}
-                      className="min-w-[var(--anchor-width)] w-auto max-w-[560px]"
+                      className="min-w-[var(--anchor-width)] w-auto max-w-[420px]"
                     >
-                      <SelectItem value={PO_SELECT_NONE}>None — enter manually</SelectItem>
-                      {customerPOs.map((po) => (
-                        <SelectItem key={po.id} value={String(po.id)}>
-                          {[po.customer_po_no || po.po_number, po.po_date, po.status]
-                            .filter(Boolean)
-                            .join(" · ")}
+                      {INCOTERM_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </Field>
+                <Field label="Pre-Carriage by" error={errors.pre_carriage_by?.message}>
+                  <Input {...register("pre_carriage_by")} placeholder="BY ROAD" className="text-[12px]" />
+                </Field>
+                <Field label="Place of Receipt" error={errors.place_of_receipt?.message}>
+                  <Input {...register("place_of_receipt")} placeholder="CHENNAI" className="text-[12px]" />
+                </Field>
+                <Field label="Pre-Carrier" error={errors.pre_carrier?.message}>
+                  <Input {...register("pre_carrier")} placeholder="CHENNAI" className="text-[12px]" />
+                </Field>
+                <Field label="Vessel" error={errors.vessel?.message}>
+                  <Input {...register("vessel")} placeholder="Vessel name" className="text-[12px]" />
+                </Field>
+                <Field label="Port of Loading" error={errors.port_of_loading?.message}>
+                  <Input {...register("port_of_loading")} placeholder="CHENNAI" className="text-[12px]" />
+                </Field>
+                <Field label="Port of Discharge" error={errors.port_of_discharge?.message}>
+                  <Input {...register("port_of_discharge")} placeholder="KOREA" className="text-[12px]" />
+                </Field>
+                <Field label="Final Destination" error={errors.final_destination?.message}>
+                  <Input {...register("final_destination")} placeholder="korea" className="text-[12px]" />
+                </Field>
+              </div>
+            </SectionCard>
+
+            {/* §5 — Goods */}
+            <SectionCard
+              id="sec-goods"
+              sectionRef={secGoodsRef}
+              icon={Package}
+              title="Goods"
+              description="Product line items: part number, description, quantity, and rate."
+              headerRight={
+                <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400 cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    {...register("show_sa_number")}
+                    className="h-3 w-3 accent-indigo-400"
+                  />
+                  Show SA #
+                </label>
+              }
+            >
+              <GoodsItemsTable showSaNumber={showSaNumber} />
+            </SectionCard>
+
+            {/* §6 — Packing Details */}
+            <SectionCard
+              id="sec-packing"
+              sectionRef={secPackingRef}
+              icon={Boxes}
+              title="Packing Details"
+              description="Per-line packing: marks & numbers, number of packages, and carton dimensions."
+            >
+              <PackingListTable />
+            </SectionCard>
+
+            {/* §7 — Weight & Notes */}
+            <SectionCard
+              id="sec-weight"
+              sectionRef={secWeightRef}
+              icon={Scale}
+              title="Weight & Notes"
+              description="Shipment weight and additional commercial remarks."
+            >
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="Net Weight" error={undefined}>
+                  <Input {...register("net_weight")} placeholder="405.20 kgs" className="text-[12px]" />
+                </Field>
+                <Field label="Gross Weight" error={undefined}>
+                  <Input {...register("gross_weight")} placeholder="420.0 kgs" className="text-[12px]" />
+                </Field>
+                <div className="col-span-full">
+                  <Field label="Additional Notes" error={undefined}>
+                    <Textarea {...register("notes")} rows={3} className="text-[12px] resize-none" />
+                  </Field>
                 </div>
-              )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </SectionCard>
 
-          <FormSectionCard
-            icon={FileText}
-            title="Invoice Details"
-            description="Reference details, currency, and commercial metadata."
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="Invoice Number *" error={errors.invoice_number?.message}>
-              <Input {...register("invoice_number")} readOnly className="bg-muted" />
-            </Field>
-            <Field label="Invoice Date *" error={errors.invoice_date?.message}>
-              <Input type="date" {...register("invoice_date")} />
-            </Field>
-            <Field label="Transport Mode" error={errors.transport_mode?.message}>
-              <Select
-                value={transportMode}
-                onValueChange={(v) => setValue("transport_mode", v as InvoiceFormSchema["transport_mode"])}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BY SEA">BY SEA</SelectItem>
-                  <SelectItem value="BY AIR">BY AIR</SelectItem>
-                  <SelectItem value="BY ROAD">BY ROAD</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Buyer's Order No" error={errors.buyer_order_no?.message}>
-              <Input {...register("buyer_order_no")} placeholder="CTRD-20260225-03" />
-            </Field>
-            <Field label="Duty Drawback" error={errors.duty_drawback?.message}>
-              <Input {...register("duty_drawback")} placeholder="ALL INDUSTRY RATE" />
-            </Field>
-            <Field label="HS Code" error={errors.hs_code?.message}>
-              <Input {...register("hs_code")} placeholder="84148090" />
-            </Field>
-            <Field label="LUT ARN No" error={undefined}>
-              <Input placeholder="From Settings" readOnly className="bg-muted text-muted-foreground text-xs" value={settings?.lut_arn_no ?? ""} />
-            </Field>
-            <Field label="Other Reference(s)" error={errors.other_references?.message}>
-              <Input {...register("other_references")} placeholder="NIL" />
-            </Field>
-              <Field label="Currency" error={errors.currency?.message}>
-                <Select
-                  value={currency}
-                  onValueChange={(v) => setValue("currency", v as InvoiceFormSchema["currency"])}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["USD", "EUR", "GBP", "AED", "INR"].map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-          </FormSectionCard>
-
-          <FormSectionCard
-            icon={Users}
-            title="Consignee & Buyer"
-            description="Maintain consignee and buyer identity exactly as required in shipping documents."
-          >
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="space-y-3">
-              <Field label="Consignee Name *" error={errors.consignee_name?.message}>
-                <Input {...register("consignee_name")} placeholder="CTR CO.,LTD." />
-              </Field>
-              <Field label="Consignee Address *" error={errors.consignee_address?.message}>
-                <Textarea
-                  {...register("consignee_address")}
-                  placeholder="# 68-26 Daehapsaneopdanji-ro, Hap-ri,&#10;Daehap-myeon, Korea. Zip Code: 50307"
-                  rows={4}
-                />
-              </Field>
-            </div>
-              <div className="space-y-3">
-              <Field label="Buyer (if other than consignee)" error={errors.buyer_if_other?.message}>
-                <Textarea {...register("buyer_if_other")} rows={4} placeholder="Leave blank if same as consignee" />
-              </Field>
-            </div>
-            </div>
-          </FormSectionCard>
-
-          <FormSectionCard
-            icon={Ship}
-            title="Shipping Details"
-            description="Port and movement information used in invoice, packing list, and exports."
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="Country of Origin" error={errors.country_of_origin?.message}>
-              <Input {...register("country_of_origin")} defaultValue="INDIA" />
-            </Field>
-            <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
-              <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" />
-            </Field>
-            <Field label="Incoterm (Delivery)" error={errors.incoterm?.message}>
-              <Select
-                value={incoterm}
-                onValueChange={(v) => setValue("incoterm", v ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Incoterm…">
-                    {(value: string) => {
-                      if (!value) return "Select Incoterm…";
-                      const found = INCOTERM_OPTIONS.find((o) => o.value === value);
-                      return found ? found.label : value;
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent
-                  alignItemWithTrigger={false}
-                  className="min-w-[var(--anchor-width)] w-auto max-w-[420px]"
-                >
-                  {INCOTERM_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Pre-Carriage by" error={errors.pre_carriage_by?.message}>
-              <Input {...register("pre_carriage_by")} placeholder="BY ROAD" />
-            </Field>
-            <Field label="Place of Receipt" error={errors.place_of_receipt?.message}>
-              <Input {...register("place_of_receipt")} placeholder="CHENNAI" />
-            </Field>
-            <Field label="Pre-Carrier" error={errors.pre_carrier?.message}>
-              <Input {...register("pre_carrier")} placeholder="CHENNAI" />
-            </Field>
-            <Field label="Vessel" error={errors.vessel?.message}>
-              <Input {...register("vessel")} placeholder="Vessel name" />
-            </Field>
-            <Field label="Port of Loading" error={errors.port_of_loading?.message}>
-              <Input {...register("port_of_loading")} placeholder="CHENNAI" />
-            </Field>
-            <Field label="Port of Discharge" error={errors.port_of_discharge?.message}>
-              <Input {...register("port_of_discharge")} placeholder="KOREA" />
-            </Field>
-            <Field label="Final Destination" error={errors.final_destination?.message}>
-              <Input {...register("final_destination")} placeholder="korea" />
-            </Field>
-            </div>
-          </FormSectionCard>
-
-          <FormSectionCard
-            icon={Package}
-            title="Goods"
-            description="Product line items: part number, description, quantity, and rate."
-          >
-            <div className="mb-3">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  {...register("show_sa_number")}
-                  className="h-3.5 w-3.5 accent-primary"
-                />
-                Show SA Number column
-              </label>
-            </div>
-            <GoodsItemsTable showSaNumber={showSaNumber} />
-          </FormSectionCard>
-
-          <FormSectionCard
-            icon={Boxes}
-            title="Packing Details"
-            description="Per-line packing: marks &amp; numbers, number of packages, and carton dimensions."
-          >
-            <PackingListTable />
-          </FormSectionCard>
-
-          <FormSectionCard
-            icon={Scale}
-            title="Weight & Notes"
-            description="Shipment weight and additional commercial remarks."
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Net Weight" error={undefined}>
-              <Input {...register("net_weight")} placeholder="405.20 kgs" />
-            </Field>
-            <Field label="Gross Weight" error={undefined}>
-              <Input {...register("gross_weight")} placeholder="420.0 kgs" />
-            </Field>
-            <div className="col-span-2">
-              <Field label="Additional Notes" error={undefined}>
-                <Textarea {...register("notes")} rows={3} />
-              </Field>
-            </div>
-            </div>
-          </FormSectionCard>
+            {/* Bottom spacer so the last section can scroll flush to the top of the panel */}
+            <div className="h-[40vh]" aria-hidden />
+          </div>
         </div>
       </form>
     </FormProvider>
   );
 }
+
+// ── Helper components ──────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -731,43 +869,62 @@ function Field({
   error?: string;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</Label>
+    <div className="space-y-1">
+      <Label className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
+        {label}
+      </Label>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
     </div>
   );
 }
 
-function FormSectionCard({
+function SectionCard({
+  id,
+  sectionRef,
   icon: Icon,
   title,
   description,
   children,
+  headerRight,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  id: string;
+  sectionRef: React.RefObject<HTMLDivElement | null>;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
   description?: string;
   children: React.ReactNode;
+  headerRight?: React.ReactNode;
 }) {
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="border-b border-border pb-4">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
-            <Icon className="h-4 w-4" />
+    <div
+      id={id}
+      ref={sectionRef}
+      className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden"
+    >
+      {/* Section header */}
+      <div className="flex items-start justify-between px-[14px] py-[12px] border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 w-[26px] h-[26px] rounded-[6px] flex items-center justify-center bg-indigo-400/15 text-indigo-400 shrink-0">
+            <Icon size={13} />
           </div>
           <div>
-            <CardTitle className="text-base">{title}</CardTitle>
-            {description ? (
-              <CardDescription className="mt-1 text-xs">
+            <p className="text-[14px] font-bold text-zinc-900 dark:text-zinc-50 leading-tight">
+              {title}
+            </p>
+            {description && (
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                 {description}
-              </CardDescription>
-            ) : null}
+              </p>
+            )}
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="pt-5">{children}</CardContent>
-    </Card>
+        {headerRight && (
+          <div className="shrink-0 ml-3 mt-1">{headerRight}</div>
+        )}
+      </div>
+      {/* Section body */}
+      <div className="p-[14px]">{children}</div>
+    </div>
   );
 }

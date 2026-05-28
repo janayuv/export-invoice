@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getVersion } from "@tauri-apps/api/app";
 import { useUpdater } from "@/hooks/useUpdater";
+import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
   FileText,
@@ -11,21 +12,22 @@ import {
   Users,
   Building2,
   LogOut,
-  ChevronRight,
   Package,
   ClipboardList,
   BarChart3,
+  Sun,
+  Moon,
   RefreshCw,
+  ChevronLeft,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
-const ROLE_COLORS: Record<string, string> = {
-  admin: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200/50 dark:border-amber-800",
-  operator: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200/50 dark:border-sky-800",
-  viewer: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-slate-200/50 dark:border-slate-600",
+const ROLE_BADGE: Record<string, string> = {
+  admin: "bg-amber-400/15 text-amber-400",
+  operator: "bg-blue-400/15 text-blue-400",
+  viewer: "bg-zinc-500/20 text-zinc-400",
 };
 
 type NavSection = {
@@ -35,12 +37,23 @@ type NavSection = {
 
 export function Layout() {
   const { currentUser, logout, can } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
   const { state: updaterState, checkForUpdates } = useUpdater();
   const [appVersion, setAppVersion] = useState("0.4.0");
+  const [mounted, setMounted] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar_collapsed") === "true"; }
+    catch { return false; }
+  });
 
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {});
-  }, []);
+    try { localStorage.setItem("sidebar_collapsed", String(collapsed)); }
+    catch {}
+  }, [collapsed]);
+
+  const isDark = mounted && resolvedTheme === "dark";
 
   const sections: NavSection[] = [
     {
@@ -79,164 +92,245 @@ export function Layout() {
     },
   ];
 
+  // Base classes shared by nav items and the bottom-area buttons
+  const navItemBase = cn(
+    "flex items-center rounded-md mx-1.5 my-px text-[12px]",
+    "transition-[background,color] duration-100",
+    collapsed ? "px-2 py-2 justify-center" : "gap-2 px-2 py-1.5"
+  );
+
+  const navItemInactive =
+    "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-50";
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <aside className="w-64 flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
-        <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
-            <Package className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div className="flex-1 min-w-0 leading-tight">
-            <h1 className="text-sm font-semibold text-foreground tracking-tight">
-              Export Invoice
-            </h1>
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs text-muted-foreground font-medium">
-                v{appVersion}
-              </p>
+    <div className="flex h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950">
+      {/* ── Sidebar ── */}
+      <aside
+        className={cn(
+          "flex-shrink-0 flex flex-col",
+          "border-r border-zinc-200 dark:border-zinc-800",
+          "transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "overflow-hidden bg-white dark:bg-[#0f0f12]"
+        )}
+        style={{ width: collapsed ? 52 : 218 }}
+      >
+        {/* ── Logo area (52px tall) ── */}
+        <div
+          className={cn(
+            "flex h-[52px] flex-shrink-0 items-center",
+            "border-b border-zinc-200 dark:border-zinc-800",
+            collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+          )}
+        >
+          {/* Icon box — clicking it expands when collapsed */}
+          <button
+            type="button"
+            onClick={collapsed ? () => setCollapsed(false) : undefined}
+            className={cn(
+              "w-[27px] h-[27px] rounded-[7px]",
+              "bg-indigo-400/15 flex items-center justify-center flex-shrink-0",
+              collapsed
+                ? "cursor-pointer hover:bg-indigo-400/25 transition-colors"
+                : "cursor-default"
+            )}
+            title={collapsed ? "Expand sidebar" : undefined}
+          >
+            <Package size={14} className="text-indigo-400" />
+          </button>
+
+          {!collapsed && (
+            <>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-bold leading-none text-zinc-900 dark:text-zinc-50">
+                  Export Invoice
+                </div>
+                <div className="flex items-center gap-1 mt-[3px]">
+                  <span className="text-[10px] leading-none text-zinc-400 dark:text-zinc-600">
+                    v{appVersion}
+                  </span>
+                  {/* Update check */}
+                  <button
+                    type="button"
+                    onClick={
+                      updaterState.phase === "idle" ||
+                      updaterState.phase === "up-to-date" ||
+                      updaterState.phase === "error" ||
+                      updaterState.phase === "available"
+                        ? checkForUpdates
+                        : undefined
+                    }
+                    disabled={
+                      updaterState.phase === "checking" ||
+                      updaterState.phase === "downloading" ||
+                      updaterState.phase === "done"
+                    }
+                    title={
+                      updaterState.phase === "available"
+                        ? `Update v${updaterState.version} available`
+                        : updaterState.phase === "checking"
+                          ? "Checking for updates…"
+                          : updaterState.phase === "downloading"
+                            ? "Downloading…"
+                            : updaterState.phase === "done"
+                              ? "Relaunch to apply update"
+                              : "Check for updates"
+                    }
+                    className={cn(
+                      "flex items-center justify-center rounded transition-colors",
+                      updaterState.phase === "available"
+                        ? "text-indigo-400"
+                        : updaterState.phase === "checking" ||
+                            updaterState.phase === "downloading" ||
+                            updaterState.phase === "done"
+                          ? "text-zinc-400/30 cursor-not-allowed"
+                          : "text-zinc-400/50 hover:text-zinc-400"
+                    )}
+                  >
+                    <RefreshCw
+                      size={10}
+                      className={cn(
+                        (updaterState.phase === "checking" ||
+                          updaterState.phase === "downloading") &&
+                          "animate-spin"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Collapse toggle */}
               <button
                 type="button"
-                onClick={
-                  updaterState.phase === "idle" ||
-                  updaterState.phase === "up-to-date" ||
-                  updaterState.phase === "error" ||
-                  updaterState.phase === "available"
-                    ? checkForUpdates
-                    : undefined
-                }
-                disabled={
-                  updaterState.phase === "checking" ||
-                  updaterState.phase === "downloading" ||
-                  updaterState.phase === "done"
-                }
-                title={
-                  updaterState.phase === "available"
-                    ? `Update v${updaterState.version} available`
-                    : updaterState.phase === "checking"
-                      ? "Checking for updates…"
-                      : updaterState.phase === "downloading"
-                        ? updaterState.percent !== null
-                          ? `Downloading update (${updaterState.percent}%)`
-                          : "Downloading update…"
-                        : updaterState.phase === "done"
-                          ? "Relaunch the app to apply the update"
-                          : "Check for updates"
-                }
-                className={cn(
-                  "flex items-center justify-center rounded transition-colors",
-                  updaterState.phase === "available"
-                    ? "text-primary"
-                    : updaterState.phase === "checking" ||
-                        updaterState.phase === "downloading" ||
-                        updaterState.phase === "done"
-                      ? "text-muted-foreground/30 cursor-not-allowed"
-                      : "text-muted-foreground/50 hover:text-muted-foreground"
-                )}
+                onClick={() => setCollapsed(true)}
+                title="Collapse sidebar"
+                className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
-                <RefreshCw
-                  size={11}
-                  className={cn(
-                    (updaterState.phase === "checking" ||
-                      updaterState.phase === "downloading") &&
-                      "animate-spin"
-                  )}
-                />
+                <ChevronLeft size={13} />
               </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
-        <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
-          <div className="px-3 space-y-5">
-            {sections.map((section) => {
-              const visible = section.items.filter((i) => i.show);
-              if (visible.length === 0) return null;
-              return (
-                <div key={section.label}>
-                  <p className="px-3 mb-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-[0.08em]">
+        {/* ── Nav sections ── */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2">
+          {sections.map((section) => {
+            const visible = section.items.filter((i) => i.show);
+            if (!visible.length) return null;
+            return (
+              <div key={section.label}>
+                {!collapsed && (
+                  <div className="px-[14px] pt-[10px] pb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-zinc-400 dark:text-zinc-600">
                     {section.label}
-                  </p>
-                  <div className="space-y-0.5">
-                    {visible.map(({ to, label, icon: Icon }) => (
-                      <NavLink
-                        key={to}
-                        to={to}
-                        end={to !== "/invoices" && to !== "/purchase-orders" && to !== "/entries" && to !== "/dashboard"}
-                        className={({ isActive }) =>
-                          cn(
-                            "group flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden",
-                            isActive
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                          )
-                        }
-                      >
-                        {({ isActive }) => (
+                  </div>
+                )}
+                {visible.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={
+                      to !== "/invoices" &&
+                      to !== "/purchase-orders" &&
+                      to !== "/entries" &&
+                      to !== "/dashboard"
+                    }
+                    title={collapsed ? label : undefined}
+                    className={({ isActive }) =>
+                      cn(
+                        navItemBase,
+                        isActive
+                          ? "bg-indigo-400/15 text-indigo-400 font-semibold"
+                          : navItemInactive
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className="w-5 flex items-center justify-center flex-shrink-0">
+                          <Icon size={14} />
+                        </span>
+                        {!collapsed && (
                           <>
+                            <span className="flex-1 truncate">{label}</span>
                             {isActive && (
-                              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                            )}
-                            <span
-                              className={cn(
-                                "flex items-center justify-center w-8 h-8 rounded-md transition-colors",
-                                isActive
-                                  ? "bg-primary/15 text-primary"
-                                  : "bg-muted/50 text-muted-foreground group-hover:bg-muted group-hover:text-foreground"
-                              )}
-                            >
-                              <Icon size={17} strokeWidth={isActive ? 2 : 1.5} />
-                            </span>
-                            <span className="flex-1">{label}</span>
-                            {isActive && (
-                              <ChevronRight size={14} className="text-primary/60" />
+                              <span className="w-[5px] h-[5px] rounded-full bg-indigo-400 flex-shrink-0" />
                             )}
                           </>
                         )}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="p-3 border-t border-sidebar-border">
-          <ThemeToggle />
+        {/* ── Bottom: theme toggle ── */}
+        <div className="border-t border-zinc-200 dark:border-zinc-800 py-1">
+          <button
+            type="button"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            title={isDark ? "Light Mode" : "Dark Mode"}
+            className={cn(navItemBase, navItemInactive, "w-[calc(100%-12px)]")}
+          >
+            <span className="w-5 flex items-center justify-center flex-shrink-0">
+              {isDark ? <Sun size={14} /> : <Moon size={14} />}
+            </span>
+            {!collapsed && (
+              <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
+            )}
+          </button>
         </div>
 
+        {/* ── User area ── */}
         {currentUser && (
-          <div className="p-3 border-t border-sidebar-border">
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-sidebar-accent border border-sidebar-border">
-              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center border border-sidebar-border">
-                <span className="text-sm font-semibold text-muted-foreground">
+          <div className="border-t border-zinc-200 dark:border-zinc-800 p-[6px]">
+            <div
+              className={cn(
+                "flex items-center gap-2 px-[6px] py-[6px] rounded-md",
+                "bg-zinc-100 dark:bg-zinc-800",
+                collapsed && "justify-center"
+              )}
+            >
+              {/* Letter avatar */}
+              <div className="w-[26px] h-[26px] rounded-full bg-indigo-400/15 flex items-center justify-center flex-shrink-0">
+                <span className="text-[11px] font-semibold text-indigo-400">
                   {currentUser.name.charAt(0).toUpperCase()}
                 </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate text-foreground">{currentUser.name}</p>
-                <span
-                  className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border capitalize",
-                    ROLE_COLORS[currentUser.role]
-                  )}
-                >
-                  {currentUser.role}
-                </span>
-              </div>
-              <button
-                onClick={logout}
-                title="Sign out"
-                className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
-              >
-                <LogOut size={16} />
-              </button>
+
+              {!collapsed && (
+                <>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold leading-none text-zinc-900 dark:text-zinc-50 truncate">
+                      {currentUser.name}
+                    </p>
+                    <span
+                      className={cn(
+                        "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold capitalize mt-0.5",
+                        ROLE_BADGE[currentUser.role] ?? "bg-zinc-500/20 text-zinc-400"
+                      )}
+                    >
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    title="Sign out"
+                    className="p-1 rounded flex-shrink-0 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                  >
+                    <LogOut size={12} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
       </aside>
 
-      <main className="flex-1 overflow-auto bg-muted/30">
+      {/* ── Main content ── */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-zinc-50 dark:bg-zinc-950">
         <Outlet />
       </main>
 
