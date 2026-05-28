@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { validateSchema } from "@/lib/db";
+import { Database } from "lucide-react";
+import { validateSchema, clearDbPath, getStoredDbPath } from "@/lib/db";
 import { Layout } from "@/components/layout/Layout";
 import { Dashboard } from "@/routes/Dashboard";
 import { Settings } from "@/routes/Settings";
@@ -41,14 +42,91 @@ function PermissionGuard({
   return <>{children}</>;
 }
 
+// ── DB-corruption recovery screen ─────────────────────────────────────────────
+function DbErrorScreen({ hasCustomDb }: { hasCustomDb: boolean }) {
+  const [resetting, setResetting] = useState(false);
+
+  async function handleReset() {
+    setResetting(true);
+    try {
+      await clearDbPath();
+      window.location.reload();
+    } catch {
+      setResetting(false);
+    }
+  }
+
+  return (
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6"
+      style={{ background: "#09090b" }}
+    >
+      <div
+        className="w-full rounded-xl p-7 space-y-5 text-center"
+        style={{ maxWidth: 420, background: "#18181b", border: "1px solid #27272a" }}
+      >
+        {/* Icon */}
+        <div
+          className="flex items-center justify-center w-12 h-12 rounded-full mx-auto"
+          style={{ background: "rgba(239,68,68,0.12)" }}
+        >
+          <Database size={22} style={{ color: "#f87171" }} />
+        </div>
+
+        {/* Message */}
+        <div className="space-y-1.5">
+          <h1 className="text-[18px] font-bold text-zinc-50">Database Corrupted</h1>
+          <p className="text-[12px] text-zinc-400 leading-relaxed">
+            The database file could not be read (SQLite error&nbsp;11 — disk image malformed).
+            This usually means the file was truncated or written incorrectly.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-2">
+          {hasCustomDb && (
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              className="w-full rounded-lg px-4 py-2.5 text-[13px] font-semibold text-white transition-opacity disabled:opacity-50"
+              style={{ background: "#818cf8" }}
+            >
+              {resetting ? "Resetting…" : "Reset to Default Database & Restart"}
+            </button>
+          )}
+          <p className="text-[11px] text-zinc-500 leading-relaxed">
+            {hasCustomDb
+              ? "This will discard the custom DB path and reload using the bundled database."
+              : "Delete or replace the database file in your app data folder, then restart. You can also restore a backup using the Settings page after the app loads."}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [dbError, setDbError] = useState(false);
+
   useEffect(() => {
-    validateSchema().catch((e) => console.error("validateSchema failed:", e));
+    validateSchema().catch((e) => {
+      const msg = String(e);
+      console.error("validateSchema failed:", e);
+      if (msg.includes("malformed") || msg.includes("code: 11")) {
+        setDbError(true);
+      }
+    });
   }, []);
+
+  if (dbError) {
+    return <DbErrorScreen hasCustomDb={!!getStoredDbPath()} />;
+  }
 
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <AuthGate>
           <Routes>
             <Route path="/" element={<Layout />}>

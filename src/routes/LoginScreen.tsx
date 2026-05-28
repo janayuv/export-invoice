@@ -243,10 +243,10 @@ export function LoginScreen() {
           <div className="grid grid-cols-3 gap-2" style={{ width: 224 }}>
             {PAD_KEYS.flat().map((key, idx) => {
               // null = invisible spacer in position [3][0] (old "C" slot)
-              if (key === null) return <div key={idx} />;
+              if (key === null) return <div key={`pad-${idx}`} />;
               return (
                 <button
-                  key={key}
+                  key={`pad-${idx}`}
                   type="button"
                   onClick={() => (key === "⌫" ? backspace() : pressDigit(key))}
                   disabled={!selectedId || isLocked}
