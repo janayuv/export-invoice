@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Edit, CheckCircle, XCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, CheckCircle, XCircle, Trash2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/PageLoader";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getPurchaseOrder,
   deletePurchaseOrder,
+  duplicatePurchaseOrder,
   confirmPO,
   closePO,
   type PurchaseOrder,
@@ -86,6 +87,24 @@ export function PurchaseOrderDetail() {
     }
   }, [po, confirm, navigate]);
 
+  const handleDuplicate = useCallback(async () => {
+    if (!po) return;
+    const ok = await confirm({
+      title: "Duplicate purchase order?",
+      description: `Create a draft copy of ${po.po_number} with a new PO number?`,
+      confirmLabel: "Duplicate",
+      variant: "default",
+    });
+    if (!ok) return;
+    try {
+      const newId = await duplicatePurchaseOrder(po.id);
+      toast.success("Purchase order duplicated");
+      navigate(`/purchase-orders/${newId}`);
+    } catch (e) {
+      toast.error(`Duplicate failed: ${e}`);
+    }
+  }, [po, confirm, navigate]);
+
   if (loading) {
     return <PageLoader message="Loading purchase order…" className="p-[18px]" />;
   }
@@ -155,6 +174,11 @@ export function PurchaseOrderDetail() {
           {isConfirmed && can("finalize_invoice") && (
             <Button variant="outline" size="sm" onClick={handleClose}>
               <XCircle size={13} className="mr-1.5" /> Close PO
+            </Button>
+          )}
+          {can("create_invoice") && (
+            <Button variant="outline" size="sm" onClick={handleDuplicate}>
+              <Copy size={13} className="mr-1.5" /> Duplicate
             </Button>
           )}
           {can("delete_invoice") && (

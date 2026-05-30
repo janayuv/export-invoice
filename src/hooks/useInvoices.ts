@@ -101,3 +101,7 @@ export async function deleteInvoice(id: number): Promise<void> {
 export async function finalizeInvoice(id: number): Promise<void> {
   await invoke("finalize_invoice", { id });
 }
+
+export async function duplicateInvoice(id: number): Promise<number> {
+  return invoke<number>("duplicate_invoice", { id });
+}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -7,7 +7,10 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  Trash2,
+  CheckCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,7 +23,9 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader } from "@/components/PageLoader";
-import { useInvoices } from "@/hooks/useInvoices";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useInvoices, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
+import { useAuth } from "@/contexts/AuthContext";
 import { getDb } from "@/lib/db";
 import { formatInvoiceDisplayDate, fmtAmount } from "@/lib/invoiceDocument";
 import {
@@ -64,6 +69,8 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean; cls?: string }[] 
 export function InvoiceList() {
   const navigate = useNavigate();
   const { invoices, loading, reload } = useInvoices();
+  const { can } = useAuth();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -71,6 +78,10 @@ export function InvoiceList() {
   const [sortKey, setSortKey] = useState<SortKey | null>("invoice_date");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [totals, setTotals] = useState<Record<number, number>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const canBulk = can("finalize_invoice") || can("delete_invoice");
 
   useEffect(() => {
     (async () => {
@@ -89,6 +100,9 @@ export function InvoiceList() {
       }
     })();
   }, [invoices]);
+
+  // Clear selection when filters change.
+  useEffect(() => { setSelectedIds(new Set()); }, [statusFilter, globalFilter, dateFrom, dateTo]);
 
   function handleSort(key: SortKey) {
     const next = toggleSort(sortKey, sortDir, key);
@@ -126,8 +140,68 @@ export function InvoiceList() {
     return data;
   }, [invoices, statusFilter, globalFilter, dateFrom, dateTo, sortKey, sortDir, totals]);
 
+  const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id));
+  const someSelected = selectedIds.size > 0;
+
+  function toggleRow(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(filtered.map((i) => i.id)));
+  }
+
+  const handleBulkFinalize = useCallback(async () => {
+    const drafts = filtered.filter((i) => selectedIds.has(i.id) && i.status === "draft");
+    if (drafts.length === 0) { toast.info("No draft invoices selected."); return; }
+    const ok = await confirm({
+      title: `Finalize ${drafts.length} invoice${drafts.length > 1 ? "s" : ""}?`,
+      description: "Finalized invoices cannot be edited.",
+      confirmLabel: "Finalize",
+      variant: "default",
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    let failed = 0;
+    for (const inv of drafts) {
+      try { await finalizeInvoice(inv.id); } catch { failed++; }
+    }
+    setBulkBusy(false);
+    setSelectedIds(new Set());
+    reload();
+    if (failed > 0) toast.error(`${failed} invoice(s) could not be finalized.`);
+    else toast.success(`${drafts.length} invoice(s) finalized.`);
+  }, [filtered, selectedIds, confirm, reload]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const ids = filtered.filter((i) => selectedIds.has(i.id));
+    const ok = await confirm({
+      title: `Delete ${ids.length} invoice${ids.length > 1 ? "s" : ""}?`,
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    let failed = 0;
+    for (const inv of ids) {
+      try { await deleteInvoice(inv.id); } catch { failed++; }
+    }
+    setBulkBusy(false);
+    setSelectedIds(new Set());
+    reload();
+    if (failed > 0) toast.error(`${failed} invoice(s) could not be deleted.`);
+    else toast.success(`${ids.length} invoice(s) deleted.`);
+  }, [filtered, selectedIds, confirm, reload]);
+
   return (
     <div className="p-[18px] space-y-3 animate-fade-up">
+      {confirmDialog}
+
       <PageHeader
         title="Invoices"
         subtitle={`${invoices.length} invoice${invoices.length !== 1 ? "s" : ""} total`}
@@ -152,14 +226,15 @@ export function InvoiceList() {
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
           />
           <Input
-            placeholder="Search invoice #, consignee, buyer order…"
+            placeholder="Search invoice #, consignee…"
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             className="pl-8 text-[12px] h-8"
+            aria-label="Search invoices"
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-          <SelectTrigger className="w-[140px] h-8 text-[12px]">
+          <SelectTrigger className="w-[140px] h-8 text-[12px]" aria-label="Filter by status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -175,7 +250,7 @@ export function InvoiceList() {
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="w-[130px] h-8 text-[12px]"
-            title="From (inclusive)"
+            aria-label="From date"
           />
           <span>–</span>
           <Input
@@ -183,7 +258,7 @@ export function InvoiceList() {
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="w-[130px] h-8 text-[12px]"
-            title="To (inclusive)"
+            aria-label="To date"
           />
         </div>
       </div>
@@ -192,12 +267,27 @@ export function InvoiceList() {
         <PageLoader />
       ) : (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-[12px]" aria-label="Invoices">
+            <caption className="sr-only">
+              {filtered.length} invoice{filtered.length !== 1 ? "s" : ""} shown
+            </caption>
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-800">
+                {canBulk && (
+                  <th scope="col" className="px-3 py-2.5 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label="Select all invoices"
+                      className="cursor-pointer accent-indigo-500"
+                    />
+                  </th>
+                )}
                 {COLUMNS.map(({ key, label, right, cls }) => (
                   <th
                     key={key}
+                    scope="col"
                     className={cn(
                       "px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-400 dark:text-zinc-600",
                       right ? "text-right" : "text-left",
@@ -207,6 +297,11 @@ export function InvoiceList() {
                     <button
                       type="button"
                       onClick={() => handleSort(key)}
+                      aria-sort={
+                        sortKey === key
+                          ? sortDir === "asc" ? "ascending" : "descending"
+                          : "none"
+                      }
                       className={cn(
                         "inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors",
                         right && "ml-auto"
@@ -214,11 +309,7 @@ export function InvoiceList() {
                     >
                       {label}
                       {sortKey === key ? (
-                        sortDir === "asc" ? (
-                          <ArrowUp size={11} />
-                        ) : (
-                          <ArrowDown size={11} />
-                        )
+                        sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
                       ) : (
                         <ArrowUpDown size={11} className="opacity-40" />
                       )}
@@ -230,7 +321,7 @@ export function InvoiceList() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={canBulk ? 9 : 8}>
                     <EmptyState
                       icon={FileX}
                       title="No invoices found"
@@ -251,52 +342,119 @@ export function InvoiceList() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    onClick={() => navigate(`/invoices/${inv.id}`)}
-                    className="border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors duration-[80ms]"
-                  >
-                    <td className="px-3 py-2.5 font-mono font-semibold text-indigo-400 whitespace-nowrap">
-                      {inv.invoice_number}
-                    </td>
-                    <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                      {formatInvoiceDisplayDate(inv.invoice_date)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex items-center px-[7px] py-[2px] rounded-[4px] text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                        {MODE_CHIP[inv.transport_mode] ?? inv.transport_mode}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-semibold text-zinc-800 dark:text-zinc-200 max-w-[160px] truncate">
-                      {inv.consignee_name || "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 max-w-[120px] truncate">
-                      {inv.country_of_destination || "—"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400 w-[60px]">
-                      {inv.currency}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                      {totals[inv.id] !== undefined ? fmtAmount(totals[inv.id]) : "—"}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={cn(
-                          "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
-                          inv.status === "final"
-                            ? "bg-indigo-400/15 text-indigo-400"
-                            : "bg-amber-400/15 text-amber-400"
-                        )}
-                      >
-                        {inv.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((inv) => {
+                  const isSelected = selectedIds.has(inv.id);
+                  return (
+                    <tr
+                      key={inv.id}
+                      tabIndex={0}
+                      role="row"
+                      aria-selected={isSelected}
+                      onClick={() => navigate(`/invoices/${inv.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate(`/invoices/${inv.id}`);
+                        }
+                      }}
+                      className="border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors duration-[80ms]"
+                    >
+                      {canBulk && (
+                        <td
+                          className="px-3 py-2.5"
+                          onClick={(e) => { e.stopPropagation(); toggleRow(inv.id); }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRow(inv.id)}
+                            aria-label={`Select invoice ${inv.invoice_number}`}
+                            className="cursor-pointer accent-indigo-500"
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-2.5 font-mono font-semibold text-indigo-400 whitespace-nowrap">
+                        {inv.invoice_number}
+                      </td>
+                      <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                        {formatInvoiceDisplayDate(inv.invoice_date)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center px-[7px] py-[2px] rounded-[4px] text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                          {MODE_CHIP[inv.transport_mode] ?? inv.transport_mode}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 font-semibold text-zinc-800 dark:text-zinc-200 max-w-[160px] truncate">
+                        {inv.consignee_name || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 max-w-[120px] truncate">
+                        {inv.country_of_destination || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400 w-[60px]">
+                        {inv.currency}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
+                        {totals[inv.id] !== undefined ? fmtAmount(totals[inv.id]) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          aria-label={`Status: ${inv.status}`}
+                          className={cn(
+                            "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
+                            inv.status === "final"
+                              ? "bg-indigo-400/15 text-indigo-400"
+                              : "bg-amber-400/15 text-amber-400"
+                          )}
+                        >
+                          {inv.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Bulk action bar — floats above content when rows are selected */}
+      {someSelected && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900 dark:bg-zinc-800 border border-zinc-700 text-zinc-100 px-4 py-2.5 rounded-xl shadow-2xl text-[12px]">
+          <span className="font-medium">{selectedIds.size} selected</span>
+          <div className="h-4 w-px bg-zinc-600" />
+          {can("finalize_invoice") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] border-zinc-600 text-zinc-100 hover:bg-zinc-700"
+              disabled={bulkBusy}
+              onClick={handleBulkFinalize}
+            >
+              <CheckCircle size={12} className="mr-1.5" />
+              Finalize selected
+            </Button>
+          )}
+          {can("delete_invoice") && (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-[11px]"
+              disabled={bulkBusy}
+              onClick={handleBulkDelete}
+            >
+              <Trash2 size={12} className="mr-1.5" />
+              Delete selected
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-1 text-zinc-400 hover:text-zinc-200 text-[11px]"
+            aria-label="Clear selection"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

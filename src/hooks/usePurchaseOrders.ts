@@ -182,6 +182,10 @@ export async function deletePurchaseOrder(id: number): Promise<void> {
   await invoke("delete_purchase_order", { id });
 }
 
+export async function duplicatePurchaseOrder(id: number): Promise<number> {
+  return invoke<number>("duplicate_purchase_order", { id });
+}
+
 export async function confirmPO(id: number): Promise<void> {
   await invoke("set_po_status", { id, newStatus: "confirmed" });
 }

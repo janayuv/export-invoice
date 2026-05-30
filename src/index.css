@@ -118,4 +118,22 @@
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+
+/* ── Print ─────────────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide all app chrome; only the invoice preview should appear on paper */
+  nav, aside, header, [data-sidebar], .no-print,
+  .flex.items-center.justify-between.gap-4,
+  .flex.items-center.gap-2.shrink-0 {
+    display: none !important;
+  }
+  body { background: white !important; color: black !important; }
+  .rounded-\[4px\].overflow-x-auto {
+    background: white !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  @page { size: A4 portrait; margin: 10mm; }
+}
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }

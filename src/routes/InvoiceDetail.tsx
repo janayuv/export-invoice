@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Edit, CheckCircle, Trash2, FileDown, FileSpreadsheet, ArrowLeft } from "lucide-react";
+import { Edit, CheckCircle, Trash2, FileDown, FileSpreadsheet, ArrowLeft, Copy, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InvoicePreview } from "@/components/InvoicePreview";
 import { PageLoader } from "@/components/PageLoader";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { getInvoice, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
+import { getInvoice, deleteInvoice, finalizeInvoice, duplicateInvoice } from "@/hooks/useInvoices";
 import { useSettings } from "@/hooks/useSettings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { exportInvoicePdf } from "@/lib/pdf";
@@ -94,6 +94,28 @@ export function InvoiceDetail() {
     }
   }, [invoiceWithLogo, settings]);
 
+  const handleDuplicate = useCallback(async () => {
+    if (!invoice) return;
+    const ok = await confirm({
+      title: "Duplicate invoice?",
+      description: `Create a draft copy of ${invoice.invoice_number} with a new invoice number?`,
+      confirmLabel: "Duplicate",
+      variant: "default",
+    });
+    if (!ok) return;
+    try {
+      const newId = await duplicateInvoice(invoice.id);
+      toast.success("Invoice duplicated");
+      navigate(`/invoices/${newId}`);
+    } catch (e) {
+      toast.error(`Duplicate failed: ${e}`);
+    }
+  }, [invoice, confirm, navigate]);
+
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
+
   const shortcuts = useMemo(
     () => [
       {
@@ -122,8 +144,15 @@ export function InvoiceDetail() {
           if (can("export_invoice")) void handleExcel();
         },
       },
+      {
+        key: "d",
+        ctrl: true,
+        handler: () => {
+          if (can("create_invoice")) void handleDuplicate();
+        },
+      },
     ],
-    [canEdit, invoice, navigate, can, handlePdf, handleExcel]
+    [canEdit, invoice, navigate, can, handlePdf, handleExcel, handleDuplicate]
   );
 
   useKeyboardShortcuts(shortcuts, !loading && invoice != null);
@@ -199,6 +228,13 @@ export function InvoiceDetail() {
             </Button>
           )}
 
+          {can("create_invoice") && (
+            <Button variant="outline" size="sm" onClick={handleDuplicate} title="Duplicate invoice (Ctrl+D)">
+              <Copy size={13} className="mr-1.5" />
+              Duplicate
+            </Button>
+          )}
+
           {can("export_invoice") && (
             <>
               <Button variant="outline" size="sm" onClick={handlePdf}>
@@ -208,6 +244,10 @@ export function InvoiceDetail() {
               <Button variant="outline" size="sm" onClick={handleExcel}>
                 <FileSpreadsheet size={13} className="mr-1.5" />
                 Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handlePrint} title="Print (Ctrl+P)">
+                <Printer size={13} className="mr-1.5" />
+                Print
               </Button>
             </>
           )}

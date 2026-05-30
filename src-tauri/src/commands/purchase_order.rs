@@ -396,6 +396,119 @@ pub fn set_po_status(
     db.with_conn(|conn| logic_set_po_status(conn, id, &new_status, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
+struct SourcePORow {
+    po_date: String,
+    customer_id: Option<i64>,
+    customer_name: String,
+    customer_address: String,
+    customer_po_no: String,
+    delivery_date: String,
+    delivery_address: String,
+    port_of_discharge: String,
+    final_destination: String,
+    payment_terms: String,
+    currency: String,
+    exchange_rate: f64,
+    notes: String,
+    show_sa_number: bool,
+}
+
+pub fn logic_duplicate_purchase_order(
+    conn: &Connection,
+    source_id: i64,
+    created_by: Option<i64>,
+    acting_role: &str,
+    permissions: &[String],
+    session_user_id: Option<i64>,
+) -> Result<i64, String> {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
+        log_security_event(conn, "duplicate_purchase_order", session_user_id,
+            "ERR_PERMISSION: create_invoice not granted");
+        return Err("ERR_PERMISSION: create_invoice not granted".into());
+    }
+
+    let src = conn.query_row(
+        "SELECT po_date, customer_id, customer_name, customer_address, customer_po_no,
+                delivery_date, delivery_address, port_of_discharge, final_destination,
+                payment_terms, currency, exchange_rate, notes, show_sa_number
+         FROM purchase_orders WHERE id=?1",
+        [source_id],
+        |r| Ok(SourcePORow {
+            po_date:           r.get(0)?,
+            customer_id:       r.get(1)?,
+            customer_name:     r.get(2)?,
+            customer_address:  r.get(3)?,
+            customer_po_no:    r.get(4)?,
+            delivery_date:     r.get(5)?,
+            delivery_address:  r.get(6)?,
+            port_of_discharge: r.get(7)?,
+            final_destination: r.get(8)?,
+            payment_terms:     r.get(9)?,
+            currency:          r.get(10)?,
+            exchange_rate:     r.get(11)?,
+            notes:             r.get(12)?,
+            show_sa_number:    r.get(13)?,
+        }),
+    )
+    .map_err(|e| format!("Source PO {source_id} not found: {e}"))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT sr_no, part_number, sa_number, description, quantity, unit,
+                    unit_price, total_amount
+             FROM purchase_order_items WHERE po_id=?1 ORDER BY sr_no",
+        )
+        .map_err(|e| e.to_string())?;
+    let items: Vec<POItemPayload> = stmt
+        .query_map([source_id], |r| {
+            Ok(POItemPayload {
+                sr_no:        r.get(0)?,
+                part_number:  r.get(1)?,
+                sa_number:    r.get(2)?,
+                description:  r.get(3)?,
+                quantity:     r.get(4)?,
+                unit:         r.get(5)?,
+                unit_price:   r.get(6)?,
+                total_amount: r.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let payload = POPayload {
+        po_number:         String::new(),
+        po_date:           src.po_date,
+        customer_id:       src.customer_id,
+        customer_name:     src.customer_name,
+        customer_address:  src.customer_address,
+        customer_po_no:    src.customer_po_no,
+        delivery_date:     src.delivery_date,
+        delivery_address:  src.delivery_address,
+        port_of_discharge: src.port_of_discharge,
+        final_destination: src.final_destination,
+        payment_terms:     src.payment_terms,
+        currency:          src.currency,
+        exchange_rate:     src.exchange_rate,
+        notes:             src.notes,
+        status:            "draft".into(),
+        show_sa_number:    src.show_sa_number,
+        items,
+    };
+
+    logic_create_purchase_order(conn, &payload, created_by, acting_role, permissions, session_user_id)
+}
+
+#[tauri::command]
+pub fn duplicate_purchase_order(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+    id: i64,
+) -> Result<i64, String> {
+    let sess = session.get()?;
+    db.with_conn(|conn| logic_duplicate_purchase_order(conn, id, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

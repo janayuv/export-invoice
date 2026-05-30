@@ -430,6 +430,172 @@ pub fn logic_finalize_invoice(
     Ok(())
 }
 
+// Internal helper struct used only by logic_duplicate_invoice.
+struct SourceInvoiceRow {
+    invoice_date: String,
+    transport_mode: String,
+    buyer_order_no: String,
+    duty_drawback: String,
+    hs_code: String,
+    other_references: String,
+    consignee_name: String,
+    consignee_address: String,
+    buyer_if_other: String,
+    country_of_origin: String,
+    country_of_destination: String,
+    pre_carriage_by: String,
+    place_of_receipt: String,
+    pre_carrier: String,
+    vessel: String,
+    port_of_loading: String,
+    port_of_discharge: String,
+    final_destination: String,
+    terms_of_payment: String,
+    incoterm: String,
+    currency: String,
+    exchange_rate: f64,
+    net_weight: String,
+    gross_weight: String,
+    notes: String,
+    show_sa_number: bool,
+    purchase_order_id: Option<i64>,
+    packing_list_json: Option<String>,
+}
+
+/// Reads invoice `source_id` and all its items then creates a fresh draft copy
+/// with a new sequence number and `status = "draft"`.
+/// Returns the new invoice's id on success.
+pub fn logic_duplicate_invoice(
+    conn: &Connection,
+    source_id: i64,
+    created_by: Option<i64>,
+    acting_role: &str,
+    permissions: &[String],
+    session_user_id: Option<i64>,
+) -> Result<i64, String> {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
+        log_security_event(conn, "duplicate_invoice", session_user_id,
+            "ERR_PERMISSION: create_invoice not granted");
+        return Err("ERR_PERMISSION: create_invoice not granted".into());
+    }
+
+    // Load the source invoice row.
+    let src = conn.query_row(
+        "SELECT invoice_date, transport_mode, buyer_order_no, duty_drawback, hs_code,
+                other_references, consignee_name, consignee_address, buyer_if_other,
+                country_of_origin, country_of_destination, pre_carriage_by,
+                place_of_receipt, pre_carrier, vessel, port_of_loading,
+                port_of_discharge, final_destination, terms_of_payment, incoterm,
+                currency, exchange_rate, net_weight, gross_weight, notes,
+                show_sa_number, purchase_order_id, packing_list
+         FROM invoices WHERE id=?1",
+        [source_id],
+        |r| {
+            Ok(SourceInvoiceRow {
+                invoice_date:           r.get(0)?,
+                transport_mode:         r.get(1)?,
+                buyer_order_no:         r.get(2)?,
+                duty_drawback:          r.get(3)?,
+                hs_code:                r.get(4)?,
+                other_references:       r.get(5)?,
+                consignee_name:         r.get(6)?,
+                consignee_address:      r.get(7)?,
+                buyer_if_other:         r.get(8)?,
+                country_of_origin:      r.get(9)?,
+                country_of_destination: r.get(10)?,
+                pre_carriage_by:        r.get(11)?,
+                place_of_receipt:       r.get(12)?,
+                pre_carrier:            r.get(13)?,
+                vessel:                 r.get(14)?,
+                port_of_loading:        r.get(15)?,
+                port_of_discharge:      r.get(16)?,
+                final_destination:      r.get(17)?,
+                terms_of_payment:       r.get(18)?,
+                incoterm:               r.get(19)?,
+                currency:               r.get(20)?,
+                exchange_rate:          r.get(21)?,
+                net_weight:             r.get(22)?,
+                gross_weight:           r.get(23)?,
+                notes:                  r.get(24)?,
+                show_sa_number:         r.get(25)?,
+                purchase_order_id:      r.get(26)?,
+                packing_list_json:      r.get(27)?,
+            })
+        },
+    )
+    .map_err(|e| format!("Source invoice {source_id} not found: {e}"))?;
+
+    // Load source items.
+    let mut stmt = conn
+        .prepare(
+            "SELECT sr_no, marks_nos, no_of_pkgs, dimensions, dimensions_unit,
+                    part_number, sa_number, description, quantity, unit,
+                    unit_price, total_amount
+             FROM invoice_items WHERE invoice_id=?1 ORDER BY sr_no",
+        )
+        .map_err(|e| e.to_string())?;
+    let items: Vec<InvoiceItemPayload> = stmt
+        .query_map([source_id], |r| {
+            Ok(InvoiceItemPayload {
+                sr_no:           r.get(0)?,
+                marks_nos:       r.get(1)?,
+                no_of_pkgs:      r.get(2)?,
+                dimensions:      r.get(3)?,
+                dimensions_unit: r.get(4)?,
+                part_number:     r.get(5)?,
+                sa_number:       r.get(6)?,
+                description:     r.get(7)?,
+                quantity:        r.get(8)?,
+                unit:            r.get(9)?,
+                unit_price:      r.get(10)?,
+                total_amount:    r.get(11)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let packing_list: Option<Vec<PackingListItemPayload>> = src.packing_list_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    let payload = InvoicePayload {
+        invoice_number:         String::new(), // allocated fresh by logic_create_invoice
+        invoice_date:           src.invoice_date,
+        transport_mode:         src.transport_mode,
+        buyer_order_no:         src.buyer_order_no,
+        duty_drawback:          src.duty_drawback,
+        hs_code:                src.hs_code,
+        other_references:       src.other_references,
+        consignee_name:         src.consignee_name,
+        consignee_address:      src.consignee_address,
+        buyer_if_other:         src.buyer_if_other,
+        country_of_origin:      src.country_of_origin,
+        country_of_destination: src.country_of_destination,
+        pre_carriage_by:        src.pre_carriage_by,
+        place_of_receipt:       src.place_of_receipt,
+        pre_carrier:            src.pre_carrier,
+        vessel:                 src.vessel,
+        port_of_loading:        src.port_of_loading,
+        port_of_discharge:      src.port_of_discharge,
+        final_destination:      src.final_destination,
+        terms_of_payment:       src.terms_of_payment,
+        incoterm:               src.incoterm,
+        currency:               src.currency,
+        exchange_rate:          src.exchange_rate,
+        net_weight:             src.net_weight,
+        gross_weight:           src.gross_weight,
+        notes:                  src.notes,
+        status:                 "draft".into(),
+        show_sa_number:         src.show_sa_number,
+        purchase_order_id:      src.purchase_order_id,
+        items,
+        packing_list,
+    };
+
+    logic_create_invoice(conn, &payload, created_by, acting_role, permissions, session_user_id)
+}
+
 // ── Tauri commands ────────────────────────────────────────────────────────────
 // Role and identity are read from the server-side AuthSession — they are never
 // accepted from the frontend IPC payload.
@@ -474,6 +640,16 @@ pub fn finalize_invoice(
 ) -> Result<(), String> {
     let sess = session.get()?;
     db.with_conn(|conn| logic_finalize_invoice(conn, id, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
+}
+
+#[tauri::command]
+pub fn duplicate_invoice(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+    id: i64,
+) -> Result<i64, String> {
+    let sess = session.get()?;
+    db.with_conn(|conn| logic_duplicate_invoice(conn, id, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
