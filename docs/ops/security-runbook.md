@@ -198,3 +198,29 @@ If any of the following are true, treat the incident as a potential security bre
    .output stdout
    ```
 5. Report the incident to the application developer with the exported CSVs.
+
+---
+
+## Session model and read gating (v1.0 product rule)
+
+**v1.0 cannot ship without read gating.** Business-data SQL reads through the frontend plugin are blocked until a Rust `AuthSession` exists.
+
+| Topic | Behavior |
+|---|---|
+| Login | Successful `verify_pin` establishes `AuthSession` and opens the read gate |
+| Reload | `restore_session` repopulates `AuthSession` when browser `sessionStorage` is within 30-minute idle and 8-hour absolute limits |
+| Logout | Clears `AuthSession` and closes the read gate |
+| Pre-auth exceptions | Login screen user list, first-run setup (`users` empty), and schema bootstrap only |
+
+Unauthenticated read of invoice/PO/customer data is **not supported** in v1.0.
+
+### PIN command policy
+
+| Command | Rule |
+|---|---|
+| `create_user_pin` | Allowed without session only when `users` table is empty (first-run setup); otherwise requires admin/`manage_users` |
+| `change_pin` | Requires active session; user may change own PIN; admin may change any user's PIN |
+
+### Admin IPC
+
+All Admin Center commands require an **admin** `AuthSession` via `require_admin_session`, except `ensure_database_schema` (startup migration bootstrap only).

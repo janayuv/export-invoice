@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, KeyRound, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -269,20 +270,18 @@ export function UserManagement() {
     : auditLog;
 
   return (
-    <div className="p-6 max-w-3xl space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">User Management</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Manage who can access this application
-          </p>
-        </div>
-        {!panelMode && (
-          <Button onClick={openAdd} size="sm">
-            <Plus size={16} className="mr-1" /> Add User
-          </Button>
-        )}
-      </div>
+    <div className="p-[18px] max-w-3xl space-y-3 animate-fade-up">
+      <PageHeader
+        title="User Management"
+        subtitle="Manage who can access this application"
+        actions={
+          !panelMode ? (
+            <Button onClick={openAdd} size="sm">
+              <Plus size={13} className="mr-1.5" /> Add User
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Inline form panel */}
       {panelMode && (

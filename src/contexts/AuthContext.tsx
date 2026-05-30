@@ -12,7 +12,9 @@ import {
   hasPermission,
   userCount,
   logout as rustLogout,
+  restoreSession,
 } from "@/lib/auth";
+import { setDbReadGate } from "@/lib/db";
 
 interface AuthContextValue {
   currentUser: User | null;
@@ -28,9 +30,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const SESSION_KEY       = "auth_user";
 const SESSION_STARTED   = "session_started";
 const LAST_ACTIVITY     = "last_activity";
-const INACTIVITY_MS     = 30 * 60_000;   // 30 minutes
-const ABSOLUTE_MS       = 8 * 60 * 60_000; // 8 hours
-const CHECK_INTERVAL_MS = 60_000;          // check every minute
+const INACTIVITY_MS     = 30 * 60_000;
+const ABSOLUTE_MS       = 8 * 60 * 60_000;
+const CHECK_INTERVAL_MS = 60_000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -43,16 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Clear the server-side AuthSession first so the trusted role is gone;
-    // errors are silently ignored (e.g. session already cleared on app restart).
     rustLogout().catch(() => {});
     clearSessionStorage();
+    setDbReadGate(false);
     setCurrentUser(null);
   }, [clearSessionStorage]);
 
-  // Attach activity listeners whenever a user is logged in — covers both fresh
-  // logins and sessions restored from sessionStorage on app reload.
-  // Effect cleanup (runs when currentUser becomes null) removes them automatically.
   useEffect(() => {
     if (!currentUser) return;
     const resetActivity = () =>
@@ -67,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [currentUser]);
 
-  // Timeout checker — runs every minute while a user is logged in.
   useEffect(() => {
     if (!currentUser) return;
     const interval = setInterval(() => {
@@ -83,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      setDbReadGate(false);
       try {
         const count = await userCount();
         if (count === 0) {
@@ -95,11 +93,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const now = Date.now();
           const started = Number(sessionStorage.getItem(SESSION_STARTED) ?? 0);
           const lastAct = Number(sessionStorage.getItem(LAST_ACTIVITY) ?? 0);
-          // Validate timestamps — discard session if either timeout exceeded.
           if (now - lastAct > INACTIVITY_MS || now - started > ABSOLUTE_MS) {
             clearSessionStorage();
           } else {
-            setCurrentUser(JSON.parse(saved) as User);
+            const parsed = JSON.parse(saved) as User;
+            try {
+              const user = await restoreSession(parsed.id, started, lastAct);
+              setCurrentUser(user);
+            } catch {
+              clearSessionStorage();
+            }
           }
         }
       } catch {
@@ -116,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
     sessionStorage.setItem(SESSION_STARTED, now);
     sessionStorage.setItem(LAST_ACTIVITY, now);
+    setDbReadGate(true);
     setCurrentUser(user);
     setNeedsSetup(false);
   }, []);
@@ -123,6 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback(
     (permission: Permission) => {
       if (!currentUser) return false;
+      if (currentUser.permissions) {
+        return currentUser.permissions.includes(permission);
+      }
       return hasPermission(currentUser.role, permission);
     },
     [currentUser]

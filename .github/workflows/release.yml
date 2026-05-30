@@ -57,15 +57,28 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Export Invoice ${{ github.ref_name }}'
           releaseBody: |
-            ## What's new in ${{ github.ref_name }}
+            ## Export Invoice ${{ github.ref_name }} — Production release
 
-            ### Bug fix — Invoice qty field resets after selecting a Purchase Order
-            - Fixed a regression where typing in the **Qty** (or Unit Price) field on the invoice form would reset the input after every digit, but only after a Purchase Order had been selected
-            - Root cause: `updateTotal` called `setValue('total_amount', …)` on each keystroke, which notified `useFieldArray`'s items subscriber and caused `GoodsRow` to re-render, re-attaching the RHF ref and overwriting the partial input value
-            - Fix: removed reactive `total_amount` maintenance from the onChange handler; row totals and footer totals now compute live from `qty × unit_price` via `useWatch`; `total_amount` is recomputed at submit time before saving
+            First production-grade release: security hardening, data integrity, resilience, and UI completion.
+
+            ### Security
+            - Session restore syncs Rust `AuthSession` after reload
+            - Admin IPC requires admin role; PIN commands require session
+            - SQL read gating until authenticated (v1.0 product rule)
+            - Dual-layer field validation (Zod + Rust)
+
+            ### Reliability
+            - Startup-safe application logging (`logs/app.log`)
+            - Admin log viewer, error boundary, centralized error messages
+            - Read retry/backoff on list hooks
+
+            ### UX
+            - Shared PageHeader, EmptyState, ConfirmDialog, loaders
+            - Legacy screens aligned to design system; sorting, date filters, draft auto-save
 
             ---
-            Download the installer below (**.msi** for enterprise/silent install, **.exe** for standard setup).
+            Download the installer below (**.msi** for enterprise/silent install, **.nsis** setup for standard install).
+            Updater manifest `latest.json` included when signing secret is configured.
           releaseDraft: false
           prerelease: false
           # Tells tauri-action to create and upload latest.json after the build.

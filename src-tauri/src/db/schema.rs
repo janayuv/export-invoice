@@ -575,6 +575,71 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 32,
+            description: "create_role_permissions",
+            // Per-role permission grants for operator and viewer.
+            // Admin permissions are always the full set and are never stored here.
+            // Seeded with defaults matching the previous hardcoded matrix.
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS role_permissions (
+                    role        TEXT NOT NULL CHECK(role IN ('operator', 'viewer')),
+                    permission  TEXT NOT NULL,
+                    granted     INTEGER NOT NULL DEFAULT 1
+                                CHECK(granted IN (0, 1)),
+                    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_by  INTEGER REFERENCES users(id),
+                    PRIMARY KEY (role, permission)
+                );
+
+                INSERT OR IGNORE INTO role_permissions (role, permission, granted) VALUES
+                    ('operator', 'view_invoices',   1),
+                    ('operator', 'export_invoice',  1),
+                    ('operator', 'create_invoice',  1),
+                    ('operator', 'edit_invoice',    1),
+                    ('viewer',   'view_invoices',   1),
+                    ('viewer',   'export_invoice',  1),
+                    ('viewer',   'create_invoice',  0),
+                    ('viewer',   'edit_invoice',    0);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 33,
+            description: "seed_previously_admin_only_permissions",
+            // Seeds the six permissions that were previously hardcoded admin-only.
+            // All default to granted=0 so existing behaviour is preserved until
+            // an admin explicitly grants them via the Roles & Permissions page.
+            sql: r#"
+                INSERT OR IGNORE INTO role_permissions (role, permission, granted) VALUES
+                    ('operator', 'finalize_invoice',  0),
+                    ('operator', 'delete_invoice',    0),
+                    ('operator', 'edit_final_invoice',0),
+                    ('operator', 'edit_confirmed_po', 0),
+                    ('operator', 'manage_users',      0),
+                    ('operator', 'access_settings',   0),
+                    ('viewer',   'finalize_invoice',  0),
+                    ('viewer',   'delete_invoice',    0),
+                    ('viewer',   'edit_final_invoice',0),
+                    ('viewer',   'edit_confirmed_po', 0),
+                    ('viewer',   'manage_users',      0),
+                    ('viewer',   'access_settings',   0);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 34,
+            description: "add_list_query_indexes",
+            // Speed up common list/filter queries. activity_log(occurred_at) already
+            // has idx_activity_log_time from migration 28 — IF NOT EXISTS is a no-op.
+            sql: r#"
+                CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON invoices(invoice_date);
+                CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+                CREATE INDEX IF NOT EXISTS idx_purchase_orders_customer_id ON purchase_orders(customer_id);
+                CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(occurred_at);
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -761,5 +826,40 @@ mod tests {
             .map(|r| r.unwrap()).collect();
         assert!(inc.contains(&"severity".into()),    "incidents missing severity");
         assert!(inc.contains(&"resolved_at".into()), "incidents missing resolved_at");
+
+        // Migration 32: role_permissions table + seed rows
+        let rp: Vec<String> = conn
+            .prepare("PRAGMA table_info(role_permissions)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .map(|r| r.unwrap()).collect();
+        assert!(rp.contains(&"role".into()),       "role_permissions missing role");
+        assert!(rp.contains(&"permission".into()), "role_permissions missing permission");
+        assert!(rp.contains(&"granted".into()),    "role_permissions missing granted");
+
+        let op_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM role_permissions WHERE role='operator'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(op_count, 10, "operator seed rows missing");
+
+        let vw_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM role_permissions WHERE role='viewer'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(vw_count, 10, "viewer seed rows missing");
+
+        // Migration 33: previously-admin-only permissions seeded with granted=0
+        let new_perms = ["finalize_invoice", "delete_invoice", "edit_final_invoice",
+                         "edit_confirmed_po", "manage_users", "access_settings"];
+        for perm in new_perms {
+            for role in ["operator", "viewer"] {
+                let granted: i64 = conn
+                    .query_row(
+                        "SELECT granted FROM role_permissions WHERE role=?1 AND permission=?2",
+                        rusqlite::params![role, perm],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(-1);
+                assert_eq!(granted, 0, "{role}:{perm} should default to granted=0");
+            }
+        }
     }
 }

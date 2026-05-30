@@ -1,5 +1,8 @@
 mod commands;
 mod db;
+mod logging;
+mod rbac;
+mod validation;
 
 use tauri::Manager;
 
@@ -25,6 +28,11 @@ fn pre_upgrade_backup() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Logging init is best-effort and must not block or abort startup.
+    std::thread::spawn(|| {
+        let _ = logging::init_logging();
+    });
+
     // Apply any staged restore BEFORE migrations run so the plugin pool opens the
     // restored file.  Errors are logged to stderr but never abort startup.
     if let Some(dest) = commands::backup::apply_pending_restore() {
@@ -76,6 +84,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::auth::verify_pin,
+            commands::auth::restore_session,
             commands::auth::logout,
             commands::auth::create_user_pin,
             commands::auth::change_pin,
@@ -107,6 +116,8 @@ pub fn run() {
             commands::backup::verify_backup,
             commands::backup::validate_and_stage_restore,
             commands::admin::ensure_database_schema,
+            commands::admin::get_role_permissions,
+            commands::admin::set_role_permission,
             commands::admin::admin_db_overview,
             commands::admin::admin_browse_table,
             commands::admin::get_activity_log,
@@ -120,6 +131,7 @@ pub fn run() {
             commands::admin::get_agent_settings,
             commands::admin::update_agent_settings,
             commands::admin::run_agent_task,
+            commands::admin::read_app_log_tail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

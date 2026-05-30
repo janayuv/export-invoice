@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::db::state::{app_config_dir, AppDb, AuthSession};
+use crate::rbac::require_admin_session;
 
 // ── Canonical action name constants ──────────────────────────────────────────
 // Use these everywhere: activity_log rows, frontend display, tests.
@@ -320,7 +321,93 @@ pub fn log_activity(
 /// Called from the frontend at startup so admin pages work before any admin route loads.
 #[tauri::command]
 pub fn ensure_database_schema(db: State<AppDb>) -> Result<(), String> {
-    db.with_conn(|conn| crate::db::schema::sync_pending_plugin_migrations(conn))
+    db.with_conn(crate::db::schema::sync_pending_plugin_migrations)
+}
+
+// ── Role permissions ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct RolePermissionRow {
+    pub role: String,
+    pub permission: String,
+    pub granted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetRolePermissionPayload {
+    pub role: String,
+    pub permission: String,
+    pub granted: bool,
+}
+
+/// Returns every row in role_permissions for operator and viewer. Admin-only.
+#[tauri::command]
+pub fn get_role_permissions(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+) -> Result<Vec<RolePermissionRow>, String> {
+    require_admin_session(&session)?;
+    db.with_conn(|conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT role, permission, granted \
+                 FROM role_permissions \
+                 ORDER BY role, permission",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RolePermissionRow {
+                    role: r.get(0)?,
+                    permission: r.get(1)?,
+                    granted: r.get::<_, i64>(2)? != 0,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    })
+}
+
+/// Upserts a single role+permission grant. Role must be operator or viewer.
+/// Admin-only. Permission key is stored as-is — no locked list enforced here.
+#[tauri::command]
+pub fn set_role_permission(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+    payload: SetRolePermissionPayload,
+) -> Result<(), String> {
+    let sess = require_admin_session(&session)?;
+    if payload.role != "operator" && payload.role != "viewer" {
+        return Err("ERR_VALIDATION: role must be operator or viewer".into());
+    }
+    db.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO role_permissions (role, permission, granted, updated_at, updated_by)
+             VALUES (?1, ?2, ?3, datetime('now'), ?4)
+             ON CONFLICT(role, permission) DO UPDATE SET
+                 granted    = excluded.granted,
+                 updated_at = excluded.updated_at,
+                 updated_by = excluded.updated_by",
+            rusqlite::params![
+                payload.role,
+                payload.permission,
+                payload.granted as i64,
+                sess.user_id,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        log_activity(
+            conn,
+            Some(sess.user_id),
+            &sess.user_name,
+            "SET_ROLE_PERMISSION",
+            "role_permissions",
+            &format!("{}:{} granted={}", payload.role, payload.permission, payload.granted),
+        );
+        Ok(())
+    })
 }
 
 /// Returns record counts for all user tables + 5 most recent activity log entries.
@@ -329,7 +416,7 @@ pub fn admin_db_overview(
     db: State<AppDb>,
     session: State<AuthSession>,
 ) -> Result<DbOverviewResult, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let mut stmt = conn
             .prepare(
@@ -399,7 +486,7 @@ pub fn admin_browse_table(
     page: i64,
     page_size: i64,
 ) -> Result<BrowseResult, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     let page_size = page_size.clamp(1, 200);
     let offset = page.max(0) * page_size;
 
@@ -472,7 +559,7 @@ pub fn get_activity_log(
     user_id: Option<i64>,
     search: Option<String>,
 ) -> Result<Vec<ActivityLogEntry>, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let search_pat = search.as_deref().map(|s| format!("%{s}%"));
         let mut stmt = conn
@@ -519,7 +606,7 @@ pub fn get_activity_log_count(
     user_id: Option<i64>,
     search: Option<String>,
 ) -> Result<i64, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let search_pat = search.as_deref().map(|s| format!("%{s}%"));
         conn.query_row(
@@ -540,7 +627,7 @@ pub fn get_system_health(
     db: State<AppDb>,
     session: State<AuthSession>,
 ) -> Result<SystemHealthMetrics, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let page_count: i64 =
             conn.query_row("PRAGMA page_count", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -586,6 +673,17 @@ fn latest_task_time(conn: &Connection, task: &str) -> Option<String> {
     .ok()
 }
 
+/// Last N lines from the application log file (`logs/app.log` under app config).
+#[tauri::command]
+pub fn read_app_log_tail(
+    session: State<AuthSession>,
+    limit: i64,
+) -> Result<Vec<String>, String> {
+    require_admin_session(&session)?;
+    let limit = limit.clamp(1, 2000) as usize;
+    crate::logging::tail_log_lines(limit)
+}
+
 /// Per-day security event counts for the last N days (from auth_audit_log).
 #[tauri::command]
 pub fn get_security_trends(
@@ -593,7 +691,7 @@ pub fn get_security_trends(
     session: State<AuthSession>,
     days: i64,
 ) -> Result<Vec<SecurityTrendPoint>, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let days = days.clamp(1, 365);
         let modifier = format!("-{days} days");
@@ -655,7 +753,7 @@ pub fn get_automation_tasks(
     session: State<AuthSession>,
     limit: i64,
 ) -> Result<Vec<AutomationTask>, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let mut stmt = conn
             .prepare(
@@ -691,7 +789,7 @@ pub fn get_incidents(
     db: State<AppDb>,
     session: State<AuthSession>,
 ) -> Result<Vec<Incident>, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let mut stmt = conn
             .prepare(
@@ -729,7 +827,7 @@ pub fn create_incident(
     severity: String,
     description: String,
 ) -> Result<(), String> {
-    session.get()?;
+    require_admin_session(&session)?;
     let valid = ["INFO", "WARNING", "CRITICAL", "FATAL"];
     if !valid.contains(&severity.as_str()) {
         return Err(format!("Invalid severity: {severity}"));
@@ -755,7 +853,7 @@ pub fn resolve_incident(
     id: i64,
     notes: String,
 ) -> Result<(), String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         let updated = conn
             .execute(
@@ -780,7 +878,7 @@ pub fn get_agent_settings(
     db: State<AppDb>,
     session: State<AuthSession>,
 ) -> Result<AgentSettings, String> {
-    session.get()?;
+    require_admin_session(&session)?;
     db.with_conn(|conn| {
         conn.query_row(
             "SELECT enabled, task_interval_sec, last_run_at, notes
@@ -807,7 +905,7 @@ pub fn update_agent_settings(
     enabled: bool,
     interval_sec: i64,
 ) -> Result<(), String> {
-    session.get()?;
+    require_admin_session(&session)?;
     let interval_sec = interval_sec.clamp(60, 86400);
     db.with_conn(|conn| {
         conn.execute(
@@ -827,7 +925,7 @@ pub fn run_agent_task(
     session: State<AuthSession>,
     task_name: String,
 ) -> Result<AutomationTask, String> {
-    session.get()?;
+    require_admin_session(&session)?;
 
     let allowed = [TASK_INTEGRITY_CHECK, TASK_BACKUP, TASK_PURGE_ACTIVITY_LOG, TASK_VACUUM];
     if !allowed.contains(&task_name.as_str()) {
@@ -844,4 +942,18 @@ pub fn run_agent_task(
         };
         insert_automation_task_row(conn, &task_name, status, duration_ms, &details)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::state::AuthSession;
+
+    #[test]
+    fn require_admin_denies_operator_for_admin_commands() {
+        let session = AuthSession::new();
+        session.set(2, "operator", "Op", vec![]).unwrap();
+        let err = require_admin_session(&session).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION"));
+    }
 }

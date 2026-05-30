@@ -59,12 +59,15 @@ pub fn resolve_db_file_path() -> PathBuf {
 
 /// Identity established after a successful `verify_pin` call.
 /// Stored in Rust-managed state so the role cannot be forged from the frontend.
+/// `permissions` is the effective set for this role, loaded from `role_permissions`
+/// at login time. Admin always receives the full set without a DB query.
 #[derive(Clone, Debug)]
 pub struct SessionIdentity {
     pub user_id: i64,
     pub role: String,
     pub user_name: String,
     pub logged_in_at: String,
+    pub permissions: Vec<String>,
 }
 
 /// Tauri managed state holding the currently logged-in user.
@@ -77,13 +80,15 @@ impl AuthSession {
     }
 
     /// Records a new session after successful PIN verification.
-    pub fn set(&self, user_id: i64, role: &str, user_name: &str) -> Result<(), String> {
+    /// `permissions` is the DB-loaded effective set for this role.
+    pub fn set(&self, user_id: i64, role: &str, user_name: &str, permissions: Vec<String>) -> Result<(), String> {
         let mut guard = self.0.lock().map_err(|e| e.to_string())?;
         *guard = Some(SessionIdentity {
             user_id,
             role: role.to_string(),
             user_name: user_name.to_string(),
             logged_in_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            permissions,
         });
         Ok(())
     }

@@ -78,7 +78,7 @@ fn allocate_po_number(conn: &Connection, po_date: &str) -> Result<String, String
         )
         .map_err(|e| e.to_string())?;
 
-    Ok(format!("PO/{}/{}", seq, fy_label))
+    Ok(format!("PO/{seq}/{fy_label}"))
 }
 
 fn insert_po_item(conn: &Connection, po_id: i64, item: &POItemPayload) -> Result<(), String> {
@@ -110,14 +110,13 @@ pub fn logic_create_purchase_order(
     payload: &POPayload,
     created_by: Option<i64>,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<i64, String> {
-    if acting_role != "admin" && acting_role != "operator" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
         log_security_event(conn, "create_purchase_order", session_user_id,
-            "ERR_PERMISSION: create_purchase_order requires admin or operator role");
-        return Err(
-            "ERR_PERMISSION: create_purchase_order requires admin or operator role".into(),
-        );
+            "ERR_PERMISSION: create_invoice not granted");
+        return Err("ERR_PERMISSION: create_invoice not granted".into());
     }
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -184,6 +183,7 @@ pub fn logic_update_purchase_order(
     payload: &POPayload,
     expected_row_version: i64,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
     let current_status: Option<String> = conn
@@ -197,23 +197,18 @@ pub fn logic_update_purchase_order(
 
     let current_status = current_status.ok_or_else(|| format!("PO {id} not found"))?;
 
-    match acting_role {
-        "admin" => {}
-        "operator" => {
-            if current_status != "draft" {
-                log_security_event(conn, "update_purchase_order", session_user_id,
-                    "ERR_PERMISSION: operator cannot edit a non-draft purchase order");
-                return Err(format!(
-                    "ERR_PERMISSION: operator cannot edit a {current_status} purchase order"
-                ));
-            }
-        }
-        _ => {
+    if acting_role != "admin" {
+        // Closed POs are a terminal state — non-admin can never edit them.
+        if current_status == "closed" {
             log_security_event(conn, "update_purchase_order", session_user_id,
-                "ERR_PERMISSION: update_purchase_order requires admin or operator");
-            return Err(
-                "ERR_PERMISSION: update_purchase_order requires admin or operator".into(),
-            )
+                "ERR_PERMISSION: closed POs cannot be edited");
+            return Err("ERR_PERMISSION: closed POs cannot be edited".into());
+        }
+        let required = if current_status == "confirmed" { "edit_confirmed_po" } else { "edit_invoice" };
+        if !permissions.iter().any(|p| p == required) {
+            log_security_event(conn, "update_purchase_order", session_user_id,
+                &format!("ERR_PERMISSION: {required} not granted"));
+            return Err(format!("ERR_PERMISSION: {required} not granted"));
         }
     }
 
@@ -306,26 +301,23 @@ pub fn logic_set_po_status(
     id: i64,
     new_status: &str,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
-    // Transitions to confirmed/closed are admin-only.
+    // Transitions to confirmed/closed are admin-only domain rules.
     match new_status {
         "confirmed" | "closed" => {
-            if acting_role != "admin" {
+            if acting_role != "admin" && !permissions.iter().any(|p| p == "edit_confirmed_po") {
                 log_security_event(conn, "set_po_status", session_user_id,
-                    "ERR_PERMISSION: setting PO status to confirmed/closed requires admin role");
-                return Err(format!(
-                    "ERR_PERMISSION: setting PO status to '{new_status}' requires admin role"
-                ));
+                    "ERR_PERMISSION: edit_confirmed_po not granted");
+                return Err("ERR_PERMISSION: edit_confirmed_po not granted".into());
             }
         }
         _ => {
-            if acting_role != "admin" && acting_role != "operator" {
+            if acting_role != "admin" && !permissions.iter().any(|p| p == "edit_invoice") {
                 log_security_event(conn, "set_po_status", session_user_id,
-                    "ERR_PERMISSION: set_po_status requires admin or operator");
-                return Err(
-                    "ERR_PERMISSION: set_po_status requires admin or operator".into(),
-                );
+                    "ERR_PERMISSION: edit_invoice not granted");
+                return Err("ERR_PERMISSION: edit_invoice not granted".into());
             }
         }
     }
@@ -368,7 +360,7 @@ pub fn create_purchase_order(
     payload: POPayload,
 ) -> Result<i64, String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_create_purchase_order(conn, &payload, Some(sess.user_id), &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_create_purchase_order(conn, &payload, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -380,7 +372,7 @@ pub fn update_purchase_order(
     payload: POPayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_purchase_order(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_purchase_order(conn, id, &payload, expected_row_version, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -401,7 +393,7 @@ pub fn set_po_status(
     new_status: String,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_set_po_status(conn, id, &new_status, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_set_po_status(conn, id, &new_status, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -499,20 +491,20 @@ mod tests {
     #[test]
     fn create_denied_for_viewer() {
         let conn = create_test_db();
-        let err = logic_create_purchase_order(&conn, &minimal_payload(), None, "viewer", None).unwrap_err();
+        let err = logic_create_purchase_order(&conn, &minimal_payload(), None, "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
     fn create_allowed_for_operator() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", &["create_invoice".to_string()], None).unwrap();
     }
 
     #[test]
     fn create_allowed_for_admin() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
     }
 
     // ── delete RBAC ─────────────────────────────────────────────────────────
@@ -520,7 +512,7 @@ mod tests {
     #[test]
     fn delete_denied_for_operator() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         let err = logic_delete_purchase_order(&conn, 1, "operator", None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -528,7 +520,7 @@ mod tests {
     #[test]
     fn delete_denied_for_viewer() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         let err = logic_delete_purchase_order(&conn, 1, "viewer", None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -536,7 +528,7 @@ mod tests {
     #[test]
     fn delete_allowed_for_admin() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         logic_delete_purchase_order(&conn, 1, "admin", None).unwrap();
     }
 
@@ -545,16 +537,49 @@ mod tests {
     #[test]
     fn set_status_to_confirmed_denied_for_operator() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
-        let err = logic_set_po_status(&conn, 1, "confirmed", "operator", None).unwrap_err();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
+        let err = logic_set_po_status(&conn, 1, "confirmed", "operator", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
     fn set_status_denied_for_viewer() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", None).unwrap();
-        let err = logic_set_po_status(&conn, 1, "draft", "viewer", None).unwrap_err();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
+        let err = logic_set_po_status(&conn, 1, "draft", "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
+    }
+
+    #[test]
+    fn show_sa_number_persisted_on_create_and_update() {
+        // Regression: the old TypeScript create/update PO paths did not write
+        // show_sa_number, so the column always stayed at the DEFAULT (TRUE).
+        let conn = create_test_db();
+
+        let mut create_payload = minimal_payload();
+        create_payload.show_sa_number = false;
+        let id = logic_create_purchase_order(&conn, &create_payload, None, "admin", &[], None).unwrap();
+
+        let show_on_create: bool = conn
+            .query_row(
+                "SELECT show_sa_number FROM purchase_orders WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!show_on_create, "create must persist show_sa_number=false");
+
+        let mut update_payload = minimal_payload();
+        update_payload.show_sa_number = true;
+        logic_update_purchase_order(&conn, id, &update_payload, 1, "admin", &[], None).unwrap();
+
+        let show_on_update: bool = conn
+            .query_row(
+                "SELECT show_sa_number FROM purchase_orders WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(show_on_update, "update must persist show_sa_number=true");
     }
 }

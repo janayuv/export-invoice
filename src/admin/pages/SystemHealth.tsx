@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { HeartPulse, Database, Shield, Clock, Users, FileText } from "lucide-react";
+import { HeartPulse, Database, Shield, Clock, Users, FileText, ScrollText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSystemHealth, type SystemHealthMetrics } from "@/admin/services/adminApi";
+import { userMessageFromError } from "@/lib/errors";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function stripErrPrefix(e: unknown): string {
-  return String(e).replace(/^ERR_\w+:\s*/i, "");
 }
 
 function MetricCard({
@@ -54,7 +52,7 @@ export function SystemHealth() {
   const load = () => {
     getSystemHealth()
       .then(setMetrics)
-      .catch((e) => toast.error(stripErrPrefix(e)))
+      .catch((e) => toast.error(userMessageFromError(e)))
       .finally(() => setLoading(false));
   };
 
@@ -66,14 +64,23 @@ export function SystemHealth() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center gap-2.5">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-green-400/15">
-          <HeartPulse size={18} className="text-green-400" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-green-400/15">
+            <HeartPulse size={18} className="text-green-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">System Health</h1>
+            <p className="text-xs text-zinc-500">Auto-refreshes every 30 seconds.</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">System Health</h1>
-          <p className="text-xs text-zinc-500">Auto-refreshes every 30 seconds.</p>
-        </div>
+        <Link
+          to="/admin/log-viewer"
+          className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent"
+        >
+          <ScrollText size={14} />
+          View application log
+        </Link>
       </div>
 
       {loading ? (

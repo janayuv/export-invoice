@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Edit, CheckCircle, Trash2, FileDown, FileSpreadsheet, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InvoicePreview } from "@/components/InvoicePreview";
+import { PageLoader } from "@/components/PageLoader";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getInvoice, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
 import { useSettings } from "@/hooks/useSettings";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { exportInvoicePdf } from "@/lib/pdf";
 import { exportInvoiceExcel } from "@/lib/excel";
 import { formatInvoiceDisplayDate } from "@/lib/invoiceDocument";
@@ -19,6 +22,7 @@ export function InvoiceDetail() {
   const navigate = useNavigate();
   const { settings, companyLogo } = useSettings();
   const { currentUser, can } = useAuth();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,20 +34,37 @@ export function InvoiceDetail() {
     });
   }, [id]);
 
-  async function handleFinalize() {
+  const invoiceWithLogo = useMemo(
+    () => (invoice ? { ...invoice, company_logo_base64: companyLogo } : null),
+    [invoice, companyLogo]
+  );
+
+  const isFinal = invoice?.status === "final";
+  const canEdit =
+    invoice != null &&
+    currentUser != null &&
+    canEditInvoiceByStatus(currentUser.permissions ?? [], invoice.status);
+
+  const handleFinalize = useCallback(async () => {
     if (!invoice) return;
     try {
       await finalizeInvoice(invoice.id);
-      setInvoice((prev) => prev ? { ...prev, status: "final" } : prev);
+      setInvoice((prev) => (prev ? { ...prev, status: "final" } : prev));
       toast.success("Invoice finalized");
     } catch (e) {
       toast.error(`Error: ${e}`);
     }
-  }
+  }, [invoice]);
 
-  async function handleDelete() {
+  const handleDelete = useCallback(async () => {
     if (!invoice) return;
-    if (!confirm(`Delete invoice ${invoice.invoice_number}?`)) return;
+    const ok = await confirm({
+      title: "Delete invoice?",
+      description: `Delete invoice ${invoice.invoice_number}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await deleteInvoice(invoice.id);
       toast.success("Invoice deleted");
@@ -51,52 +72,78 @@ export function InvoiceDetail() {
     } catch (e) {
       toast.error(`Error: ${e}`);
     }
-  }
+  }, [invoice, confirm, navigate]);
 
-  async function handlePdf() {
-    if (!invoice || !settings) return;
+  const handlePdf = useCallback(async () => {
+    if (!invoiceWithLogo || !settings) return;
     try {
       await exportInvoicePdf(invoiceWithLogo, settings);
       toast.success("PDF exported");
     } catch (e) {
       toast.error(`PDF export failed: ${e}`);
     }
-  }
+  }, [invoiceWithLogo, settings]);
 
-  async function handleExcel() {
-    if (!invoice || !settings) return;
+  const handleExcel = useCallback(async () => {
+    if (!invoiceWithLogo || !settings) return;
     try {
       await exportInvoiceExcel(invoiceWithLogo, settings);
       toast.success("Excel exported");
     } catch (e) {
       toast.error(`Excel export failed: ${e}`);
     }
-  }
+  }, [invoiceWithLogo, settings]);
+
+  const shortcuts = useMemo(
+    () => [
+      {
+        key: "s",
+        ctrl: true,
+        handler: () => {
+          if (canEdit && invoice) navigate(`/invoices/${invoice.id}/edit`);
+        },
+      },
+      {
+        key: "Escape",
+        handler: () => navigate("/invoices"),
+        ignoreInputs: false,
+      },
+      {
+        key: "p",
+        ctrl: true,
+        handler: () => {
+          if (can("export_invoice")) void handlePdf();
+        },
+      },
+      {
+        key: "e",
+        ctrl: true,
+        handler: () => {
+          if (can("export_invoice")) void handleExcel();
+        },
+      },
+    ],
+    [canEdit, invoice, navigate, can, handlePdf, handleExcel]
+  );
+
+  useKeyboardShortcuts(shortcuts, !loading && invoice != null);
 
   if (loading) {
-    return (
-      <div className="p-[18px] text-[12px] text-zinc-400 dark:text-zinc-600">
-        Loading invoice…
-      </div>
-    );
+    return <PageLoader message="Loading invoice…" className="p-[18px]" />;
   }
 
-  if (!invoice) {
+  if (!invoice || !invoiceWithLogo) {
     return (
-      <div className="p-[18px] text-[12px] text-red-500">
+      <div className="p-[18px] text-[12px] text-red-500 animate-fade-up">
         Invoice not found.
       </div>
     );
   }
 
-  const invoiceWithLogo: Invoice = { ...invoice, company_logo_base64: companyLogo };
-  const isFinal = invoice.status === "final";
-  const canEdit = currentUser != null && canEditInvoiceByStatus(currentUser.role, invoice.status);
-
   return (
     <div className="p-[18px] space-y-3 animate-fade-up">
+      {confirmDialog}
 
-      {/* ── Page header ── */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0">
           <Button
@@ -104,6 +151,7 @@ export function InvoiceDetail() {
             size="icon"
             className="h-8 w-8 shrink-0"
             onClick={() => navigate("/invoices")}
+            aria-label="Back to invoices"
           >
             <ArrowLeft size={15} />
           </Button>
@@ -122,7 +170,6 @@ export function InvoiceDetail() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-          {/* Status badge */}
           <span
             className={cn(
               "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
@@ -174,7 +221,6 @@ export function InvoiceDetail() {
         </div>
       </div>
 
-      {/* ── Invoice preview "desk" ── */}
       {settings && (
         <div
           className="rounded-[4px] overflow-x-auto p-6"

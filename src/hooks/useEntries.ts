@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
+import { withRetry } from "@/lib/retry";
 import type { Entry, EntryFormValues, EntryItem } from "@/lib/types";
 
 /** List row for the Entry table. */
@@ -33,12 +34,14 @@ export function useEntries() {
   const loadList = useCallback(async () => {
     try {
       setLoading(true);
-      const db = await getDb();
-      const rows = await db.select<EntrySummary[]>(
-        `SELECT id, customer_name, invoice_number, invoice_date, po_number,
-                local_invoice_no, shipping_bill_no, status, created_at
-         FROM entries ORDER BY created_at DESC`
-      );
+      const rows = await withRetry(async () => {
+        const db = await getDb();
+        return db.select<EntrySummary[]>(
+          `SELECT id, customer_name, invoice_number, invoice_date, po_number,
+                  local_invoice_no, shipping_bill_no, status, created_at
+           FROM entries ORDER BY created_at DESC`
+        );
+      });
       setEntries(rows);
       setError(null);
     } catch (e) {
@@ -56,8 +59,10 @@ export function useEntries() {
 }
 
 export async function getEntry(id: number): Promise<Entry | null> {
-  const db = await getDb();
-  const rows = await db.select<Entry[]>("SELECT * FROM entries WHERE id = ?", [id]);
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<Entry[]>("SELECT * FROM entries WHERE id = ?", [id]);
+  });
   if (rows.length === 0) return null;
   const entry = rows[0];
   entry.items = JSON.parse(
@@ -72,10 +77,10 @@ export async function getEntry(id: number): Promise<Entry | null> {
  * table — not a live join against invoices or purchase_orders.
  */
 export async function getEntriesReport(): Promise<Entry[]> {
-  const db = await getDb();
-  const rows = await db.select<Entry[]>(
-    "SELECT * FROM entries ORDER BY created_at DESC"
-  );
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<Entry[]>("SELECT * FROM entries ORDER BY created_at DESC");
+  });
   return rows.map((e) => ({
     ...e,
     items: JSON.parse((e.items as unknown as string) || "[]") as EntryItem[],
@@ -94,20 +99,22 @@ export async function getInvoicesByCustomerId(
   customerId: number,
   currentEntryId: number | null = null
 ): Promise<InvoiceForCustomer[]> {
-  const db = await getDb();
-  return db.select<InvoiceForCustomer[]>(
-    `SELECT i.id, i.invoice_number, i.invoice_date, i.currency, i.purchase_order_id
-     FROM invoices i
-     LEFT JOIN purchase_orders po ON i.purchase_order_id = po.id
-     WHERE (po.customer_id = ? OR i.purchase_order_id IS NULL)
-       AND i.id NOT IN (
-         SELECT invoice_id FROM entries
-         WHERE invoice_id IS NOT NULL
-           AND id != COALESCE(?, 0)
-       )
-     ORDER BY i.created_at DESC`,
-    [customerId, currentEntryId]
-  );
+  return withRetry(async () => {
+    const db = await getDb();
+    return db.select<InvoiceForCustomer[]>(
+      `SELECT i.id, i.invoice_number, i.invoice_date, i.currency, i.purchase_order_id
+       FROM invoices i
+       LEFT JOIN purchase_orders po ON i.purchase_order_id = po.id
+       WHERE (po.customer_id = ? OR i.purchase_order_id IS NULL)
+         AND i.id NOT IN (
+           SELECT invoice_id FROM entries
+           WHERE invoice_id IS NOT NULL
+             AND id != COALESCE(?, 0)
+         )
+       ORDER BY i.created_at DESC`,
+      [customerId, currentEntryId]
+    );
+  });
 }
 
 // ── Write commands — all validation and RBAC now live in Rust ─────────────────

@@ -156,7 +156,8 @@ export function Layout() {
                 ? "cursor-pointer hover:bg-indigo-400/25 transition-colors"
                 : "cursor-default"
             )}
-            title={collapsed ? "Expand sidebar" : undefined}
+            title={collapsed ? "Expand sidebar" : "Export Invoice app icon"}
+            aria-label={collapsed ? "Expand sidebar" : undefined}
           >
             <Package size={14} className="text-indigo-400" />
           </button>
@@ -187,13 +188,13 @@ export function Layout() {
                       updaterState.phase === "downloading" ||
                       updaterState.phase === "done"
                     }
-                    title={
+                    aria-label={
                       updaterState.phase === "available"
-                        ? `Update v${updaterState.version} available`
+                        ? `Update version ${updaterState.version} available`
                         : updaterState.phase === "checking"
-                          ? "Checking for updates…"
+                          ? "Checking for updates"
                           : updaterState.phase === "downloading"
-                            ? "Downloading…"
+                            ? "Downloading update"
                             : updaterState.phase === "done"
                               ? "Relaunch to apply update"
                               : "Check for updates"
@@ -225,6 +226,7 @@ export function Layout() {
               <button
                 type="button"
                 onClick={() => setCollapsed(true)}
+                aria-label="Collapse sidebar"
                 title="Collapse sidebar"
                 className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
@@ -293,6 +295,7 @@ export function Layout() {
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Light Mode" : "Dark Mode"}
             className={cn(navItemBase, navItemInactive, "w-[calc(100%-12px)]")}
           >
@@ -340,6 +343,7 @@ export function Layout() {
                   <button
                     type="button"
                     onClick={logout}
+                    aria-label="Sign out"
                     title="Sign out"
                     className="p-1 rounded flex-shrink-0 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   >

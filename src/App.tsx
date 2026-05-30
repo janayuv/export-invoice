@@ -27,13 +27,16 @@ import { RolesPermissions }    from "@/admin/pages/RolesPermissions";
 import { AutomationCenter }    from "@/admin/pages/AutomationCenter";
 import { OperationCenter }     from "@/admin/pages/OperationCenter";
 import { SystemAgent }         from "@/admin/pages/SystemAgent";
+import { LogViewer }           from "@/admin/pages/LogViewer";
+import { ErrorBoundary }       from "@/components/ErrorBoundary";
+import { PageLoader }          from "@/components/PageLoader";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/lib/auth";
 import type { ReactNode } from "react";
 
 function AuthGate({ children }: { children: ReactNode }) {
   const { currentUser, isLoading, needsSetup } = useAuth();
-  if (isLoading) return null;
+  if (isLoading) return <PageLoader fullScreen message="Signing in…" />;
   if (needsSetup) return <SetupAdmin />;
   if (!currentUser) return <LoginScreen />;
   return <>{children}</>;
@@ -133,11 +136,12 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <BrowserRouter
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
-        <AuthGate>
-          <Routes>
+      <ErrorBoundary>
+        <BrowserRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <AuthGate>
+            <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
@@ -235,10 +239,12 @@ export default function App() {
               <Route path="admin/automation-center"   element={<PermissionGuard permission="access_settings"><AutomationCenter /></PermissionGuard>} />
               <Route path="admin/operations-center"   element={<PermissionGuard permission="access_settings"><OperationCenter /></PermissionGuard>} />
               <Route path="admin/system-agent"        element={<PermissionGuard permission="access_settings"><SystemAgent /></PermissionGuard>} />
+              <Route path="admin/log-viewer"          element={<PermissionGuard permission="access_settings"><LogViewer /></PermissionGuard>} />
             </Route>
-          </Routes>
-        </AuthGate>
-      </BrowserRouter>
+            </Routes>
+          </AuthGate>
+        </BrowserRouter>
+      </ErrorBoundary>
     </AuthProvider>
   );
 }

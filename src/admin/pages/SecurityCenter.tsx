@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { ShieldCheck } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -29,6 +29,16 @@ import {
   type CurrentSessionInfo,
 } from "@/lib/auth";
 import { getSecurityTrends, type SecurityTrendPoint } from "@/admin/services/adminApi";
+import { PageHeader } from "@/components/PageHeader";
+import { PageLoader } from "@/components/PageLoader";
+
+interface SecurityEvent {
+  id: number;
+  command: string;
+  user_id: number | null;
+  reason: string;
+  occurred_at: string;
+}
 
 const EVENT_META: Record<
   string,
@@ -61,6 +71,7 @@ export function SecurityCenter() {
   const [authLog, setAuthLog] = useState<AuthAuditEntry[]>([]);
   const [trends, setTrends] = useState<SecurityTrendPoint[]>([]);
   const [currentSession, setCurrentSession] = useState<CurrentSessionInfo | null>(null);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -69,12 +80,14 @@ export function SecurityCenter() {
       getAuthAuditLog(100),
       getSecurityTrends(14),
       getCurrentSession(),
+      invoke<SecurityEvent[]>("get_security_events", { limit: 100 }).catch(() => [] as SecurityEvent[]),
     ])
-      .then(([t, log, tr, sess]) => {
+      .then(([t, log, tr, sess, events]) => {
         setTelemetry(t);
         setAuthLog(log);
         setTrends(tr);
         setCurrentSession(sess);
+        setSecurityEvents(events);
       })
       .catch((e) => toast.error(stripErrPrefix(e)))
       .finally(() => setLoading(false));
@@ -89,20 +102,14 @@ export function SecurityCenter() {
     }, []);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-2.5">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-red-400/15">
-          <ShieldCheck size={18} className="text-red-400" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Security Center</h1>
-          <p className="text-xs text-zinc-500">Auth events and 14-day security trends.</p>
-        </div>
-      </div>
+    <div className="p-[18px] space-y-3 animate-fade-up">
+      <PageHeader
+        title="Security Center"
+        subtitle="Auth events, permission denials, and 14-day security trends"
+      />
 
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <PageLoader />
       ) : (
         <>
           {/* Active session (single desktop login) */}
@@ -182,6 +189,48 @@ export function SecurityCenter() {
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Permission denial log */}
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-auto max-h-[50vh] lg:col-span-2">
+              <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+                <p className="text-[12px] font-bold text-zinc-800 dark:text-zinc-200">
+                  Security Event Log
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Permission denials and blocked privileged commands
+                </p>
+              </div>
+              {securityEvents.length === 0 ? (
+                <p className="text-[12px] text-zinc-500 p-4">No security events recorded.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Command</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Reason</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {securityEvents.map((e) => (
+                      <TableRow key={e.id}>
+                        <TableCell className="text-xs text-zinc-500 whitespace-nowrap">
+                          {e.occurred_at}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono">{e.command}</TableCell>
+                        <TableCell className="text-xs">
+                          {e.user_id ? `#${e.user_id}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-zinc-600 dark:text-zinc-400 max-w-[240px] truncate">
+                          {e.reason}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+
             {/* Auth event log */}
             <div className="rounded-xl ring-1 ring-foreground/10 bg-card overflow-auto max-h-[50vh]">
               <div className="px-4 py-3 border-b border-foreground/10">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,6 +45,7 @@ import {
   type PurchaseOrderSummary,
 } from "@/hooks/usePurchaseOrders";
 import { Combobox } from "@/components/ui/combobox";
+import { clearDraftAutosave, useDraftAutosave } from "@/hooks/useDraftAutosave";
 import { cn } from "@/lib/utils";
 
 const PO_SELECT_NONE = "__none__";
@@ -179,6 +180,27 @@ export function InvoiceNew() {
   const incoterm      = useWatch({ control: form.control, name: "incoterm" }) ?? "";
   const showSaNumber  = (useWatch({ control: form.control, name: "show_sa_number" }) ?? true) as boolean;
   const invoiceNumber = useWatch({ control: form.control, name: "invoice_number" });
+  const formSnapshot = useWatch({ control: form.control });
+
+  const draftKey = isEdit ? `draft:invoice:edit:${id}` : "draft:invoice:new";
+  const draftAutosaveEnabled = !isEdit || editingStatus === "draft";
+
+  const restoreDraft = useCallback(
+    (data: InvoiceFormSchema) => {
+      reset(data);
+      toast.success("Draft restored");
+    },
+    [reset]
+  );
+
+  useDraftAutosave({
+    storageKey: draftKey,
+    enabled: draftAutosaveEnabled,
+    restoreEnabled: !isEdit,
+    getValues: () => getValues(),
+    onRestore: restoreDraft,
+    watchDep: formSnapshot,
+  });
 
   // Pre-fill invoice number and settings defaults for new invoice
   useEffect(() => {
@@ -205,7 +227,7 @@ export function InvoiceNew() {
       if (!inv) return;
       originalRowVersionRef.current = inv.row_version;
       if (!currentUser) return;
-      if (!canEditInvoiceByStatus(currentUser.role, inv.status)) {
+      if (!canEditInvoiceByStatus(currentUser.permissions ?? [], inv.status)) {
         toast.error(
           inv.status === "final"
             ? "Only administrators can edit finalized invoices"
@@ -455,10 +477,12 @@ export function InvoiceNew() {
       if (isEdit && id) {
         await updateInvoice(Number(id), finalData, originalRowVersionRef.current);
         toast.success("Invoice updated");
+        clearDraftAutosave(draftKey);
         navigate(`/invoices/${id}`);
       } else {
         const newId = await createInvoice(finalData);
         toast.success(finalize ? "Invoice finalized" : "Invoice saved as draft");
+        clearDraftAutosave(draftKey);
         navigate(`/invoices/${newId}`);
       }
     } catch (e) {
@@ -490,6 +514,7 @@ export function InvoiceNew() {
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={() => navigate(-1)}
+              aria-label="Go back"
             >
               <ArrowLeft size={15} />
             </Button>

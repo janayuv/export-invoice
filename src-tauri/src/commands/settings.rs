@@ -26,16 +26,17 @@ pub fn logic_save_company_settings(
     conn: &Connection,
     payload: &SettingsPayload,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
-    if acting_role != "admin" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "access_settings") {
         log_security_event(
             conn,
             "save_company_settings",
             session_user_id,
-            "ERR_PERMISSION: save_company_settings requires admin role",
+            "ERR_PERMISSION: access_settings not granted",
         );
-        return Err("ERR_PERMISSION: save_company_settings requires admin role".into());
+        return Err("ERR_PERMISSION: access_settings not granted".into());
     }
 
     conn.execute(
@@ -71,16 +72,17 @@ pub fn logic_save_company_logo(
     conn: &Connection,
     base64: &str,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
-    if acting_role != "admin" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "access_settings") {
         log_security_event(
             conn,
             "save_company_logo",
             session_user_id,
-            "ERR_PERMISSION: save_company_logo requires admin role",
+            "ERR_PERMISSION: access_settings not granted",
         );
-        return Err("ERR_PERMISSION: save_company_logo requires admin role".into());
+        return Err("ERR_PERMISSION: access_settings not granted".into());
     }
 
     conn.execute(
@@ -99,7 +101,7 @@ pub fn save_company_settings(
 ) -> Result<(), String> {
     let sess = session.get()?;
     db.with_conn(|conn| {
-        logic_save_company_settings(conn, &payload, &sess.role, Some(sess.user_id))
+        logic_save_company_settings(conn, &payload, &sess.role, &sess.permissions, Some(sess.user_id))
     })
 }
 
@@ -110,7 +112,7 @@ pub fn save_company_logo(
     base64: String,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_save_company_logo(conn, &base64, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_save_company_logo(conn, &base64, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[cfg(test)]
@@ -179,7 +181,7 @@ mod tests {
     fn save_settings_denied_for_operator() {
         let conn = create_test_db();
         let err =
-            logic_save_company_settings(&conn, &minimal_payload(), "operator", None).unwrap_err();
+            logic_save_company_settings(&conn, &minimal_payload(), "operator", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
@@ -187,14 +189,14 @@ mod tests {
     fn save_settings_denied_for_viewer() {
         let conn = create_test_db();
         let err =
-            logic_save_company_settings(&conn, &minimal_payload(), "viewer", None).unwrap_err();
+            logic_save_company_settings(&conn, &minimal_payload(), "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
     fn save_settings_succeeds_for_admin() {
         let conn = create_test_db();
-        logic_save_company_settings(&conn, &minimal_payload(), "admin", None).unwrap();
+        logic_save_company_settings(&conn, &minimal_payload(), "admin", &[], None).unwrap();
         let name: String = conn
             .query_row("SELECT name FROM company_settings WHERE id=1", [], |r| r.get(0))
             .unwrap();
@@ -206,7 +208,7 @@ mod tests {
         let conn = create_test_db();
         let mut p = minimal_payload();
         p.name = "  Padded Name  ".into();
-        logic_save_company_settings(&conn, &p, "admin", None).unwrap();
+        logic_save_company_settings(&conn, &p, "admin", &[], None).unwrap();
         let name: String = conn
             .query_row("SELECT name FROM company_settings WHERE id=1", [], |r| r.get(0))
             .unwrap();
@@ -216,7 +218,7 @@ mod tests {
     #[test]
     fn save_logo_denied_for_operator() {
         let conn = create_test_db();
-        let err = logic_save_company_logo(&conn, "data:image/png;base64,abc", "operator", None)
+        let err = logic_save_company_logo(&conn, "data:image/png;base64,abc", "operator", &[], None)
             .unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -225,7 +227,7 @@ mod tests {
     fn save_logo_denied_for_viewer() {
         let conn = create_test_db();
         let err =
-            logic_save_company_logo(&conn, "data:image/png;base64,abc", "viewer", None).unwrap_err();
+            logic_save_company_logo(&conn, "data:image/png;base64,abc", "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
@@ -233,7 +235,7 @@ mod tests {
     fn save_logo_succeeds_for_admin() {
         let conn = create_test_db();
         let b64 = "data:image/png;base64,iVBORw0KGgo=";
-        logic_save_company_logo(&conn, b64, "admin", None).unwrap();
+        logic_save_company_logo(&conn, b64, "admin", &[], None).unwrap();
         let stored: String = conn
             .query_row(
                 "SELECT company_logo_base64 FROM company_settings WHERE id=1",
@@ -247,8 +249,8 @@ mod tests {
     #[test]
     fn save_logo_empty_string_clears_logo() {
         let conn = create_test_db();
-        logic_save_company_logo(&conn, "data:image/png;base64,abc", "admin", None).unwrap();
-        logic_save_company_logo(&conn, "", "admin", None).unwrap();
+        logic_save_company_logo(&conn, "data:image/png;base64,abc", "admin", &[], None).unwrap();
+        logic_save_company_logo(&conn, "", "admin", &[], None).unwrap();
         let stored: String = conn
             .query_row(
                 "SELECT company_logo_base64 FROM company_settings WHERE id=1",

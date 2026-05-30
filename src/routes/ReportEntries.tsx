@@ -12,6 +12,9 @@ import { Search, FileSpreadsheet, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/PageHeader";
+import { PageLoader } from "@/components/PageLoader";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Table,
   TableBody,
@@ -70,6 +73,7 @@ const txt = (v: string) => v || "—";
 
 export function ReportEntries() {
   const navigate = useNavigate();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -136,7 +140,7 @@ export function ReportEntries() {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
-              title="Edit entry"
+              aria-label="Edit entry"
               onClick={() => navigate(`/entries/${entryId}/edit`)}
             >
               <Pencil size={14} />
@@ -145,7 +149,7 @@ export function ReportEntries() {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-              title="Delete entry"
+              aria-label="Delete entry"
               onClick={() => void handleDelete(Number(entryId))}
             >
               <Trash2 size={14} />
@@ -166,7 +170,13 @@ export function ReportEntries() {
   });
 
   async function handleDelete(entryId: number) {
-    if (!window.confirm("Delete this entry? This cannot be undone.")) return;
+    const ok = await confirm({
+      title: "Delete entry?",
+      description: "Delete this entry? This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await deleteEntry(entryId);
       setEntries((prev) => prev.filter((e) => e.id !== entryId));
@@ -190,35 +200,37 @@ export function ReportEntries() {
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Entry Report</h2>
-          <p className="text-muted-foreground text-sm mt-1">{filtered.length} rows</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <FileSpreadsheet size={16} className="mr-1" />
-          Export Excel
-        </Button>
-      </div>
+    <div className="p-[18px] space-y-3 animate-fade-up">
+      {confirmDialog}
+
+      <PageHeader
+        title="Entry Report"
+        subtitle={`${filtered.length} rows`}
+        actions={
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <FileSpreadsheet size={13} className="mr-1.5" />
+            Export Excel
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative flex-1 min-w-[200px] max-w-[340px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
           <Input
             placeholder="Search customer, invoice, PO, shipping bill…"
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-8"
+            className="pl-8 text-[12px] h-8"
           />
         </div>
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
           <span className="whitespace-nowrap">Invoice date:</span>
           <Input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="w-36"
+            className="w-[130px] h-8 text-[12px]"
             title="From (inclusive)"
           />
           <span>–</span>
@@ -226,13 +238,14 @@ export function ReportEntries() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="w-36"
+            className="w-[130px] h-8 text-[12px]"
             title="To (inclusive)"
           />
           {(dateFrom || dateTo) && (
             <button
+              type="button"
               onClick={() => { setDateFrom(""); setDateTo(""); }}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
+              className="text-[11px] text-zinc-400 hover:text-zinc-600 underline"
             >
               clear
             </button>
@@ -241,9 +254,9 @@ export function ReportEntries() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Loading...</div>
+        <PageLoader />
       ) : (
-        <div className="border rounded-lg overflow-x-auto">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((hg) => (

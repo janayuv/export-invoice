@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
+import { withRetry } from "@/lib/retry";
 
 export interface POItem {
   id?: number;
@@ -93,12 +94,14 @@ function getFiscalYear(date: Date) {
 
 // Read-only preview — no DB write. Used by the form to display the likely next number.
 export async function previewPONumber(date?: Date): Promise<string> {
-  const db = await getDb();
   const { fyStart, fyLabel } = getFiscalYear(date ?? new Date());
-  const rows = await db.select<{ last_number: number }[]>(
-    "SELECT last_number FROM po_sequence WHERE year = ?",
-    [fyStart]
-  );
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<{ last_number: number }[]>(
+      "SELECT last_number FROM po_sequence WHERE year = ?",
+      [fyStart]
+    );
+  });
   const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
   return `PO/${next}/${fyLabel}`;
 }
@@ -111,11 +114,13 @@ export function usePurchaseOrders() {
   const loadList = useCallback(async () => {
     try {
       setLoading(true);
-      const db = await getDb();
-      const rows = await db.select<PurchaseOrder[]>(
-        `SELECT id, po_number, po_date, customer_name, customer_po_no, currency, status, created_at
-         FROM purchase_orders ORDER BY created_at DESC`
-      );
+      const rows = await withRetry(async () => {
+        const db = await getDb();
+        return db.select<PurchaseOrder[]>(
+          `SELECT id, po_number, po_date, customer_name, customer_po_no, currency, status, created_at
+           FROM purchase_orders ORDER BY created_at DESC`
+        );
+      });
       setOrders(rows);
       setError(null);
     } catch (e) {
@@ -131,17 +136,19 @@ export function usePurchaseOrders() {
 }
 
 export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null> {
-  const db = await getDb();
-  const rows = await db.select<PurchaseOrder[]>(
-    "SELECT * FROM purchase_orders WHERE id = ?",
-    [id]
-  );
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<PurchaseOrder[]>("SELECT * FROM purchase_orders WHERE id = ?", [id]);
+  });
   if (rows.length === 0) return null;
   const po = rows[0];
-  po.items = await db.select<POItem[]>(
-    "SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sr_no",
-    [id]
-  );
+  po.items = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<POItem[]>(
+      "SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sr_no",
+      [id]
+    );
+  });
   return po;
 }
 
@@ -149,14 +156,16 @@ export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null
 export async function getPurchaseOrdersByCustomerId(
   customerId: number
 ): Promise<PurchaseOrderSummary[]> {
-  const db = await getDb();
-  return db.select<PurchaseOrderSummary[]>(
-    `SELECT id, po_number, customer_po_no, po_date, status, currency
-     FROM purchase_orders
-     WHERE customer_id = ?
-     ORDER BY created_at DESC`,
-    [customerId]
-  );
+  return withRetry(async () => {
+    const db = await getDb();
+    return db.select<PurchaseOrderSummary[]>(
+      `SELECT id, po_number, customer_po_no, po_date, status, currency
+       FROM purchase_orders
+       WHERE customer_id = ?
+       ORDER BY created_at DESC`,
+      [customerId]
+    );
+  });
 }
 
 export async function createPurchaseOrder(data: POFormValues): Promise<number> {

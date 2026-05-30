@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import {
   Save,
   ArrowLeft,
-  FilePlus2,
   UserCheck,
   FileText,
   Package,
@@ -263,36 +262,39 @@ export function EntryNew() {
   return (
     <form
       onSubmit={form.handleSubmit(onSubmit)}
-      className="min-h-full bg-muted/30"
+      className="p-[18px] space-y-3 animate-fade-up max-w-5xl mx-auto"
     >
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <FilePlus2 className="h-5 w-5" aria-hidden />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                  {isEdit ? "Edit Entry" : "New Entry"}
-                </h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Export entry linking a customer, invoice, and shipping references
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => navigate(-1)}>
-                <ArrowLeft size={16} className="mr-1" />
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                <Save size={16} className="mr-1" />
-                {isEdit ? "Save Changes" : "Save Entry"}
-              </Button>
-            </div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+          >
+            <ArrowLeft size={15} />
+          </Button>
+          <div>
+            <h1 className="text-[20px] font-bold text-zinc-900 dark:text-zinc-50">
+              {isEdit ? "Edit Entry" : "New Entry"}
+            </h1>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Export entry linking a customer, invoice, and shipping references
+            </p>
           </div>
-        </header>
+        </div>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <Button type="button" variant="outline" size="sm" onClick={() => navigate(-1)}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={isSubmitting}>
+            <Save size={13} className="mr-1.5" />
+            {isEdit ? "Save Changes" : "Save Entry"}
+          </Button>
+        </div>
+      </header>
 
         {/* Customer + invoice selectors */}
         <SectionCard icon={UserCheck} title="Customer & Invoice" description="Select a customer, then an invoice to auto-fill PO and goods details.">
@@ -406,7 +408,6 @@ export function EntryNew() {
             </Field>
           </div>
         </SectionCard>
-      </div>
     </form>
   );
 }

@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::db::state::{AppDb, AuthSession};
+use crate::rbac::require_admin_session;
 
 // ── hashing helpers ───────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ fn compute_chain_entry_hash(
     details_json: &str,
 ) -> String {
     let uid = user_id.map(|id| id.to_string()).unwrap_or_default();
-    let canonical = format!("{}|{}|{}|{}|{}", prev_hash, event_type, uid, occurred_at, details_json);
+    let canonical = format!("{prev_hash}|{event_type}|{uid}|{occurred_at}|{details_json}");
     let mut h = Sha256::new();
     h.update(canonical.as_bytes());
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
@@ -122,6 +123,7 @@ pub struct UserRecord {
     pub role: String,
     pub is_active: i64,
     pub created_at: String,
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -157,6 +159,7 @@ pub fn logic_verify_pin(
                         role: row.get(3)?,
                         is_active: row.get(4)?,
                         created_at: row.get(5)?,
+                        permissions: vec![],  // populated by verify_pin after load_role_permissions
                     },
                 ))
             },
@@ -170,27 +173,43 @@ pub fn logic_verify_pin(
         return Ok(VerifyPinResult::Failed { remaining_attempts: MAX_ATTEMPTS });
     };
 
-    // Check active lockout.
-    // Use datetime() on both sides so SQLite normalises any format difference
-    // (bare "YYYY-MM-DD HH:MM:SS" vs ISO "YYYY-MM-DDTHH:MM:SSZ").
+    // Check active lockout — fail-secure if lockout state cannot be verified.
     if let Some(ref until) = locked_until {
-        let still_locked: bool = conn
-            .query_row(
-                "SELECT datetime(?1) > datetime('now')",
-                [until.as_str()],
-                |r| r.get(0),
-            )
-            .unwrap_or(false);
-        if still_locked {
-            log_auth_event(conn, Some(user_id), "locked",
-                &format!(r#"{{"until":"{until}","reason":"active_lockout"}}"#));
-            return Ok(VerifyPinResult::Locked { until: until.clone() });
-        }
-        // Expired lockout — reset counter so we start fresh.
-        let _ = conn.execute(
-            "UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=?1",
-            [user_id],
+        let still_locked: Result<bool, rusqlite::Error> = conn.query_row(
+            "SELECT datetime(?1) > datetime('now')",
+            [until.as_str()],
+            |r| r.get(0),
         );
+        match still_locked {
+            Ok(true) => {
+                log_auth_event(
+                    conn,
+                    Some(user_id),
+                    "locked",
+                    &format!(r#"{{"until":"{until}","reason":"active_lockout"}}"#),
+                );
+                return Ok(VerifyPinResult::Locked {
+                    until: until.clone(),
+                });
+            }
+            Ok(false) => {
+                let _ = conn.execute(
+                    "UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=?1",
+                    [user_id],
+                );
+            }
+            Err(_) => {
+                log_auth_event(
+                    conn,
+                    Some(user_id),
+                    "locked",
+                    r#"{"reason":"fail_secure_ambiguous_lockout"}"#,
+                );
+                return Ok(VerifyPinResult::Locked {
+                    until: until.clone(),
+                });
+            }
+        }
     }
 
     // Distinguish legacy SHA-256 (64 lowercase hex chars) from Argon2id PHC strings.
@@ -307,9 +326,10 @@ pub fn logic_update_user_info(
     role: &str,
     is_active: bool,
     acting_role: &str,
+    permissions: &[String],
 ) -> Result<(), String> {
-    if acting_role != "admin" {
-        return Err("ERR_PERMISSION: manage_users requires admin role".into());
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "manage_users") {
+        return Err("ERR_PERMISSION: manage_users not granted".into());
     }
     conn.execute(
         "UPDATE users SET name=?1, role=?2, is_active=?3, updated_at=datetime('now') WHERE id=?4",
@@ -317,6 +337,46 @@ pub fn logic_update_user_info(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Loads the effective permission set for a role from `role_permissions`.
+/// Admin always gets the full static set; operator/viewer are read from the DB.
+/// Falls back to empty if the table doesn't exist yet (first-launch migration lag).
+pub fn load_role_permissions(conn: &Connection, role: &str) -> Vec<String> {
+    if role == "admin" {
+        return vec![
+            "view_invoices".into(),
+            "export_invoice".into(),
+            "create_invoice".into(),
+            "edit_invoice".into(),
+            "edit_final_invoice".into(),
+            "edit_confirmed_po".into(),
+            "finalize_invoice".into(),
+            "delete_invoice".into(),
+            "access_settings".into(),
+            "manage_users".into(),
+            "view_database_mgmt".into(),
+            "view_activity_log".into(),
+            "view_user_activity".into(),
+            "view_system_health".into(),
+            "view_security_center".into(),
+            "view_roles_permissions".into(),
+            "view_automation".into(),
+            "view_operations".into(),
+            "view_system_agent".into(),
+        ];
+    }
+
+    let result = conn.prepare(
+        "SELECT permission FROM role_permissions WHERE role=?1 AND granted=1",
+    );
+    match result {
+        Ok(mut stmt) => stmt
+            .query_map([role], |r| r.get::<_, String>(0))
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default(),
+        Err(_) => vec![],
+    }
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -328,11 +388,13 @@ pub fn verify_pin(
     user_id: i64,
     pin: String,
 ) -> Result<VerifyPinResult, String> {
-    let result = db.with_conn(|conn| logic_verify_pin(conn, user_id, &pin))?;
+    let mut result = db.with_conn(|conn| logic_verify_pin(conn, user_id, &pin))?;
     // Establish the Rust-side session on success so all subsequent commands
-    // can read the trusted role without relying on a frontend-supplied value.
-    if let VerifyPinResult::Success { ref user } = result {
-        session.set(user.id, &user.role, &user.name)?;
+    // can read the trusted role and permissions without relying on frontend values.
+    if let VerifyPinResult::Success { ref mut user } = result {
+        let permissions = db.with_conn(|conn| Ok(load_role_permissions(conn, &user.role)))?;
+        session.set(user.id, &user.role, &user.name, permissions.clone())?;
+        user.permissions = permissions;
     }
     Ok(result)
 }
@@ -340,20 +402,93 @@ pub fn verify_pin(
 #[tauri::command]
 pub fn create_user_pin(
     db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
     name: String,
     pin: String,
     role: String,
 ) -> Result<(), String> {
-    db.with_conn(|conn| logic_create_user(conn, &name, &pin, &role))
+    db.with_conn(|conn| {
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))
+            .unwrap_or(0);
+        if count > 0 {
+            let sess = session.get()?;
+            if sess.role != "admin" && !sess.permissions.iter().any(|p| p == "manage_users") {
+                return Err("ERR_PERMISSION: manage_users required".into());
+            }
+        }
+        logic_create_user(conn, &name, &pin, &role)
+    })
 }
 
 #[tauri::command]
 pub fn change_pin(
     db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
     user_id: i64,
     new_pin: String,
 ) -> Result<(), String> {
+    let sess = session.get()?;
+    if sess.user_id != user_id && sess.role != "admin" {
+        return Err("ERR_PERMISSION: cannot change another user's PIN".into());
+    }
     db.with_conn(|conn| logic_change_pin(conn, user_id, &new_pin))
+}
+
+const SESSION_INACTIVITY_MS: i64 = 30 * 60 * 1000;
+const SESSION_ABSOLUTE_MS: i64 = 8 * 60 * 60 * 1000;
+
+pub fn validate_session_window(
+    session_started_ms: i64,
+    last_activity_ms: i64,
+    now_ms: i64,
+) -> Result<(), String> {
+    if now_ms - last_activity_ms > SESSION_INACTIVITY_MS
+        || now_ms - session_started_ms > SESSION_ABSOLUTE_MS
+    {
+        return Err("ERR_SESSION: session expired".into());
+    }
+    Ok(())
+}
+
+/// Repopulates Rust AuthSession after frontend reload when browser sessionStorage is still valid.
+#[tauri::command]
+pub fn restore_session(
+    db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
+    user_id: i64,
+    session_started_ms: i64,
+    last_activity_ms: i64,
+) -> Result<UserRecord, String> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    validate_session_window(session_started_ms, last_activity_ms, now_ms)?;
+
+    db.with_conn(|conn| {
+        let user: UserRecord = conn
+            .query_row(
+                "SELECT id, name, role, is_active, created_at FROM users WHERE id=?1 AND is_active=1",
+                [user_id],
+                |row| {
+                    Ok(UserRecord {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        role: row.get(2)?,
+                        is_active: row.get(3)?,
+                        created_at: row.get(4)?,
+                        permissions: vec![],
+                    })
+                },
+            )
+            .map_err(|_| "ERR_SESSION: user not found or inactive".to_string())?;
+
+        let permissions = load_role_permissions(conn, &user.role);
+        session.set(user.id, &user.role, &user.name, permissions.clone())?;
+
+        Ok(UserRecord {
+            permissions,
+            ..user
+        })
+    })
 }
 
 #[tauri::command]
@@ -366,7 +501,7 @@ pub fn update_user_info(
     is_active: bool,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_user_info(conn, id, &name, &role, is_active, &sess.role))
+    db.with_conn(|conn| logic_update_user_info(conn, id, &name, &role, is_active, &sess.role, &sess.permissions))
 }
 
 #[tauri::command]
@@ -382,14 +517,6 @@ pub struct CurrentSessionInfo {
     pub role: String,
     pub logged_in_at: String,
     pub source: String,
-}
-
-fn require_admin_session(session: &AuthSession) -> Result<crate::db::state::SessionIdentity, String> {
-    let sess = session.get()?;
-    if sess.role != "admin" {
-        return Err("ERR_PERMISSION: requires admin role".into());
-    }
-    Ok(sess)
 }
 
 #[tauri::command]
@@ -1008,9 +1135,46 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn load_role_permissions_admin_returns_full_set_without_db() {
+        // Admin path must never touch the DB — pass a closed connection path.
+        let conn = Connection::open_in_memory().unwrap();
+        // Do not create role_permissions table — admin must not query it.
+        let perms = super::load_role_permissions(&conn, "admin");
+        assert!(perms.contains(&"create_invoice".to_string()));
+        assert!(perms.contains(&"manage_users".to_string()));
+        assert!(perms.contains(&"finalize_invoice".to_string()));
+    }
+
+    #[test]
+    fn load_role_permissions_operator_reads_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE role_permissions (
+                role TEXT NOT NULL, permission TEXT NOT NULL, granted INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_by INTEGER, PRIMARY KEY (role, permission)
+            );
+            INSERT INTO role_permissions VALUES ('operator','create_invoice',1,'',NULL);
+            INSERT INTO role_permissions VALUES ('operator','edit_invoice',0,'',NULL);",
+        ).unwrap();
+
+        let perms = super::load_role_permissions(&conn, "operator");
+        assert!(perms.contains(&"create_invoice".to_string()), "granted perm should be present");
+        assert!(!perms.contains(&"edit_invoice".to_string()), "revoked perm should be absent");
+    }
+
+    #[test]
+    fn load_role_permissions_missing_table_returns_empty() {
+        let conn = Connection::open_in_memory().unwrap();
+        // No table created — should return empty vec, not panic.
+        let perms = super::load_role_permissions(&conn, "operator");
+        assert!(perms.is_empty(), "missing table should yield empty permissions");
+    }
+
+    #[test]
     fn session_set_and_get_returns_correct_identity() {
         let s = AuthSession::new();
-        s.set(42, "admin", "Admin").unwrap();
+        s.set(42, "admin", "Admin", vec!["create_invoice".into()]).unwrap();
         let id = s.get().unwrap();
         assert_eq!(id.user_id, 42);
         assert_eq!(id.role, "admin");
@@ -1019,7 +1183,7 @@ pub(crate) mod tests {
     #[test]
     fn session_clear_removes_identity() {
         let s = AuthSession::new();
-        s.set(1, "operator", "Op").unwrap();
+        s.set(1, "operator", "Op", vec![]).unwrap();
         s.clear().unwrap();
         assert!(s.get().is_err(), "session should be empty after clear");
     }
@@ -1039,13 +1203,13 @@ pub(crate) mod tests {
         // Verifies that the role stored in AuthSession is exactly what RBAC
         // logic receives — a viewer stored in session cannot mutate to admin.
         let s = AuthSession::new();
-        s.set(99, "viewer", "View").unwrap();
+        s.set(99, "viewer", "View", vec![]).unwrap();
         let id = s.get().unwrap();
 
         // Pass stored role to a privileged logic function; expect denial.
         let conn = Connection::open_in_memory().unwrap();
         setup_users_table(&conn);
-        let err = logic_update_user_info(&conn, 1, "Alice", "admin", true, &id.role)
+        let err = logic_update_user_info(&conn, 1, "Alice", "admin", true, &id.role, &[])
             .unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "viewer should be denied, got: {err}");
     }
@@ -1342,5 +1506,46 @@ pub(crate) mod tests {
         assert_eq!(t.unlock_events, 1);
         assert_eq!(t.login_successes, 3);
         assert_eq!(t.pin_changes, 1);
+    }
+
+    #[test]
+    fn fail_secure_denies_when_lockout_unparseable() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_users_table(&conn);
+        logic_create_user(&conn, "Locked", "1234", "admin").unwrap();
+        let uid: i64 = conn
+            .query_row("SELECT id FROM users WHERE name='Locked'", [], |r| r.get(0))
+            .unwrap();
+        conn.execute(
+            "UPDATE users SET locked_until='not-a-datetime' WHERE id=?1",
+            [uid],
+        )
+        .unwrap();
+        assert!(matches!(
+            logic_verify_pin(&conn, uid, "1234").unwrap(),
+            VerifyPinResult::Locked { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_session_window_rejects_expired_idle() {
+        let now = 1_000_000_000_i64;
+        let started = now - 60_000;
+        let last = now - SESSION_INACTIVITY_MS - 1;
+        assert!(validate_session_window(started, last, now).is_err());
+    }
+
+    #[test]
+    fn change_pin_requires_active_session() {
+        let session = AuthSession::new();
+        assert!(session.get().unwrap_err().contains("No active session"));
+    }
+
+    #[test]
+    fn require_admin_denies_operator_session() {
+        let session = AuthSession::new();
+        session.set(2, "operator", "Op", vec![]).unwrap();
+        let err = crate::rbac::require_admin_session(&session).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION"));
     }
 }

@@ -271,7 +271,19 @@ function BackupTab() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl">
+      <div
+        className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-[12px] text-amber-900 dark:text-amber-100"
+        role="alert"
+      >
+        <p className="font-semibold">Backups are not encrypted</p>
+        <p className="mt-1 text-[11px] opacity-90 leading-relaxed">
+          Database backups are plain SQLite files containing all company, invoice, and user data.
+          Store them on encrypted drives or secure locations. Anyone with file access can read the
+          contents — treat backup files like sensitive credentials.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <ActionCard
         icon={Download}
         title="Create Backup"
@@ -309,6 +321,7 @@ function BackupTab() {
         }
         result={verifyResult}
       />
+      </div>
     </div>
   );
 }

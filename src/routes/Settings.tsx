@@ -9,12 +9,21 @@ import {
   FolderOpen,
   ImageIcon,
   Landmark,
+  LayoutGrid,
   RotateCcw,
   Save,
   Upload,
   UserCheck,
   X,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { PageHeader } from "@/components/PageHeader";
+import { PageLoader } from "@/components/PageLoader";
+import {
+  getStoredDensity,
+  setStoredDensity,
+  type UiDensity,
+} from "@/lib/uiDensity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +41,7 @@ export function Settings() {
   const { settings, loading, saveSettings, saveLogo } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dbPath, setDbPathState] = useState<string | null>(getStoredDbPath());
+  const [density, setDensity] = useState<UiDensity>(() => getStoredDensity());
 
   const {
     register,
@@ -116,11 +126,14 @@ export function Settings() {
   };
 
   if (loading) {
-    return (
-      <div className="p-[18px] text-[12px] text-zinc-400 dark:text-zinc-600">
-        Loading settings…
-      </div>
-    );
+    return <PageLoader message="Loading settings…" className="p-[18px]" />;
+  }
+
+  function handleDensityChange(checked: boolean) {
+    const next: UiDensity = checked ? "comfortable" : "dense";
+    setDensity(next);
+    setStoredDensity(next);
+    toast.success(`Density set to ${next}`);
   }
 
   return (
@@ -128,19 +141,49 @@ export function Settings() {
       onSubmit={handleSubmit(onSubmit)}
       className="p-[18px] space-y-3 animate-fade-up"
     >
-      {/* ── Page header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[20px] font-bold text-zinc-900 dark:text-zinc-50">Settings</h1>
-          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Company information and export configuration
-          </p>
+      <PageHeader
+        title="Settings"
+        subtitle="Company information and export configuration"
+        actions={
+          <Button type="submit" size="sm" disabled={isSubmitting}>
+            <Save size={13} className="mr-1.5" />
+            {isSubmitting ? "Saving…" : "Save Changes"}
+          </Button>
+        }
+      />
+
+      {/* ── Card: UI Density ── */}
+      <SettingsCard
+        icon={LayoutGrid}
+        title="Display Density"
+        description="Adjust spacing and typography across the app."
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-[12px] font-medium text-zinc-800 dark:text-zinc-200">
+              {density === "dense" ? "Dense" : "Comfortable"}
+            </p>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+              {density === "dense"
+                ? "Compact layout — best for data-heavy screens."
+                : "More breathing room between sections."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
+              Dense
+            </span>
+            <Switch
+              checked={density === "comfortable"}
+              onCheckedChange={handleDensityChange}
+              aria-label="Toggle comfortable display density"
+            />
+            <span className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
+              Comfortable
+            </span>
+          </div>
         </div>
-        <Button type="submit" size="sm" disabled={isSubmitting}>
-          <Save size={13} className="mr-1.5" />
-          {isSubmitting ? "Saving…" : "Save Changes"}
-        </Button>
-      </div>
+      </SettingsCard>
 
       {/* ── Card 1: Exporter Information ── */}
       <SettingsCard

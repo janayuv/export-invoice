@@ -77,8 +77,6 @@ The user can point the app at a different `.db` file from the **Settings → "Da
 
 ### 5. Known bugs (do not paper over)
 
-- `updateInvoice` in `useInvoices.ts` omits `sa_number` from the item re-INSERT — items lose their SA number on edit-save.
-- `createPurchaseOrder` / `updatePurchaseOrder` do not persist `show_sa_number` — flag always writes as the column default (`TRUE`).
 - `generatePONumber` commits the sequence counter as a side effect of previewing the number; `generateInvoiceNumber` is correctly read-only.
 
 ---
@@ -717,10 +715,9 @@ createInvoice(data, createdBy?)
   → INSERT INTO invoices (incoterm, packing_list=JSON.stringify(...), ...)
   → INSERT INTO invoice_items (dimensions_unit, sa_number, ...)
 
-updateInvoice(id, data)
-  → UPDATE invoices SET incoterm, packing_list=JSON.stringify(...)
-  → DELETE + re-INSERT invoice_items
-  ⚠ Bug: sa_number omitted from item re-INSERT (items lose SA number on edit)
+updateInvoice(id, data, expectedRowVersion)
+  → invoke("update_invoice", …) — Rust UPDATE + DELETE/re-INSERT items (includes sa_number)
+  → ERR_CONFLICT when row_version mismatch (optimistic locking)
 
 deleteInvoice(id)
   → DELETE FROM invoices
@@ -878,5 +875,3 @@ Database: `sqlite:export_invoice.db` in Tauri app data directory.
 | No advanced list filtering | Text search only |
 | PIN auth only | No 2FA; 4–6 digit length only |
 | SheetJS CE image limitation | Logo reserved rows work; `!images` silently ignored (Pro feature) |
-| `sa_number` lost on invoice edit | `updateInvoice` omits it from item re-INSERT |
-| `show_sa_number` not persisted on PO | `createPurchaseOrder`/`updatePurchaseOrder` do not write the flag |

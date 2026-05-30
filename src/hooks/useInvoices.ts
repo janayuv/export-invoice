@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
+import { withRetry } from "@/lib/retry";
 import type { Invoice, InvoiceItem, InvoiceFormValues, PackingListItem } from "@/lib/types";
 
 function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
@@ -13,12 +14,14 @@ function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
 
 // Read-only preview — no DB write. Used by the form to display the likely next number.
 export async function generateInvoiceNumber(date?: Date): Promise<string> {
-  const db = await getDb();
   const { fyStart, fyLabel } = getFiscalYear(date ?? new Date());
-  const rows = await db.select<{ last_number: number }[]>(
-    "SELECT last_number FROM invoice_sequence WHERE year = ?",
-    [fyStart]
-  );
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<{ last_number: number }[]>(
+      "SELECT last_number FROM invoice_sequence WHERE year = ?",
+      [fyStart]
+    );
+  });
   const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
   return `EXP/${next}/${fyLabel}`;
 }
@@ -32,12 +35,14 @@ export function useInvoices() {
   const loadList = useCallback(async () => {
     try {
       setLoading(true);
-      const db = await getDb();
-      const rows = await db.select<Invoice[]>(
-        `SELECT id, invoice_number, invoice_date, transport_mode,
-                consignee_name, country_of_destination, currency, status, created_at
-         FROM invoices ORDER BY created_at DESC`
-      );
+      const rows = await withRetry(async () => {
+        const db = await getDb();
+        return db.select<Invoice[]>(
+          `SELECT id, invoice_number, invoice_date, transport_mode,
+                  consignee_name, country_of_destination, currency, status, created_at
+           FROM invoices ORDER BY created_at DESC`
+        );
+      });
       setInvoices(rows);
       setError(null);
     } catch (e) {
@@ -55,20 +60,22 @@ export function useInvoices() {
 }
 
 export async function getInvoice(id: number): Promise<Invoice | null> {
-  const db = await getDb();
-  const rows = await db.select<Invoice[]>(
-    "SELECT * FROM invoices WHERE id = ?",
-    [id]
-  );
+  const rows = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<Invoice[]>("SELECT * FROM invoices WHERE id = ?", [id]);
+  });
   if (rows.length === 0) return null;
   const invoice = rows[0];
   invoice.packing_list = JSON.parse(
     (invoice.packing_list as unknown as string) || "[]"
   ) as PackingListItem[];
-  const items = await db.select<InvoiceItem[]>(
-    "SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sr_no",
-    [id]
-  );
+  const items = await withRetry(async () => {
+    const db = await getDb();
+    return db.select<InvoiceItem[]>(
+      "SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sr_no",
+      [id]
+    );
+  });
   invoice.items = items;
   return invoice;
 }

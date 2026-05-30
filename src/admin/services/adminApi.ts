@@ -112,6 +112,10 @@ export function getSystemHealth(): Promise<SystemHealthMetrics> {
   return invoke("get_system_health");
 }
 
+export function readAppLogTail(limit: number): Promise<string[]> {
+  return invoke("read_app_log_tail", { limit });
+}
+
 // ── Security trends ───────────────────────────────────────────────────────────
 
 export function getSecurityTrends(days: number): Promise<SecurityTrendPoint[]> {

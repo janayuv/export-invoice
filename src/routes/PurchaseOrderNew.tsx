@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Save, CheckCircle, Plus, Trash2, FilePlus2, ArrowLeft, UserCheck, ClipboardList, Truck, NotebookPen } from "lucide-react";
+import { Save, CheckCircle, Plus, Trash2, ArrowLeft, UserCheck, ClipboardList, Truck, NotebookPen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,7 @@ import { poFormSchema } from "@/lib/schemas";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditPurchaseOrderByStatus } from "@/lib/auth";
 import { useSettings } from "@/hooks/useSettings";
+import { clearDraftAutosave, useDraftAutosave } from "@/hooks/useDraftAutosave";
 
 const PO_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED"] as const;
 
@@ -129,7 +130,7 @@ export function PurchaseOrderNew() {
         if (!po) return;
         originalRowVersionRef.current = po.row_version;
         if (!currentUser) return;
-        if (!canEditPurchaseOrderByStatus(currentUser.role, po.status)) {
+        if (!canEditPurchaseOrderByStatus(currentUser.permissions ?? [], po.status)) {
           toast.error(
             po.status === "confirmed"
               ? "Only administrators can edit confirmed purchase orders"
@@ -168,6 +169,21 @@ export function PurchaseOrderNew() {
   function set<K extends keyof POFormValues>(field: K, value: POFormValues[K]) {
     setForm((f) => ({ ...f, [field]: value }));
   }
+
+  const draftKey = isEdit ? `draft:po:edit:${id}` : "draft:po:new";
+  const restoreDraft = useCallback((data: POFormValues) => {
+    setForm(data);
+    toast.success("Draft restored");
+  }, []);
+
+  useDraftAutosave({
+    storageKey: draftKey,
+    enabled: form.status === "draft",
+    restoreEnabled: !isEdit,
+    getValues: () => form,
+    onRestore: restoreDraft,
+    watchDep: form,
+  });
 
   function applyCustomer(customerId: string) {
     setSelectedCustomerId(customerId);
@@ -286,10 +302,12 @@ export function PurchaseOrderNew() {
       if (isEdit && id) {
         await updatePurchaseOrder(Number(id), finalForm, originalRowVersionRef.current);
         toast.success("Purchase order updated");
+        clearDraftAutosave(draftKey);
         navigate(`/purchase-orders/${id}`);
       } else {
         const newId = await createPurchaseOrder(finalForm);
         toast.success(confirm ? "Purchase order confirmed" : "Purchase order saved as draft");
+        clearDraftAutosave(draftKey);
         navigate(`/purchase-orders/${newId}`);
       }
     } catch (e) {
@@ -308,42 +326,47 @@ export function PurchaseOrderNew() {
   const deliverToCustomer = customers.find((c) => String(c.id) === selectedDeliverToCustomerId) ?? null;
 
   return (
-    <div className="min-h-full bg-muted/30">
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <FilePlus2 size={18} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-                  {isEdit ? "Edit Purchase Order" : "New Purchase Order"}
-                </h2>
-                {generatedNumber && !isEdit && (
-                  <p className="mt-1 text-sm text-muted-foreground">Number: {generatedNumber}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button variant="outline" onClick={() => navigate(-1)} disabled={isSubmitting}>
-                <ArrowLeft size={16} className="mr-1" />
-                Cancel
-              </Button>
-              <Button variant="outline" onClick={() => handleSubmit(false)} disabled={isSubmitting}>
-                <Save size={16} className="mr-1" />
-                {isEdit && form.status === "confirmed" ? "Save Changes" : "Save Draft"}
-              </Button>
-              {(!isEdit || form.status === "draft") && can("finalize_invoice") && (
-                <Button onClick={() => handleSubmit(true)} disabled={isSubmitting}>
-                  <CheckCircle size={16} className="mr-1" /> Confirm PO
-                </Button>
-              )}
-            </div>
+    <div className="p-[18px] space-y-3 animate-fade-up max-w-5xl mx-auto">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+          >
+            <ArrowLeft size={15} />
+          </Button>
+          <div>
+            <h1 className="text-[20px] font-bold text-zinc-900 dark:text-zinc-50">
+              {isEdit ? "Edit Purchase Order" : "New Purchase Order"}
+            </h1>
+            {generatedNumber && !isEdit && (
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Internal ref: {generatedNumber}
+              </p>
+            )}
           </div>
-        </header>
+        </div>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <Button variant="outline" size="sm" onClick={() => navigate(-1)} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleSubmit(false)} disabled={isSubmitting}>
+            <Save size={13} className="mr-1.5" />
+            {isEdit && form.status === "confirmed" ? "Save Changes" : "Save Draft"}
+          </Button>
+          {(!isEdit || form.status === "draft") && can("finalize_invoice") && (
+            <Button size="sm" onClick={() => handleSubmit(true)} disabled={isSubmitting}>
+              <CheckCircle size={13} className="mr-1.5" /> Confirm PO
+            </Button>
+          )}
+        </div>
+      </header>
 
-        <FormSectionCard
+      <FormSectionCard
           icon={UserCheck}
           title="Customer"
           description="Select a customer from master records and review linked address details."
@@ -629,7 +652,6 @@ export function PurchaseOrderNew() {
             onChange={(e) => set("notes", e.target.value)}
           />
         </FormSectionCard>
-      </div>
     </div>
   );
 }

@@ -158,14 +158,15 @@ pub fn logic_create_entry(
     payload: &EntryPayload,
     created_by: Option<i64>,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<i64, String> {
-    if acting_role != "admin" && acting_role != "operator" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
         log_security_event(
             conn, "create_entry", session_user_id,
-            "ERR_PERMISSION: create_entry requires admin or operator role",
+            "ERR_PERMISSION: create_invoice not granted",
         );
-        return Err("ERR_PERMISSION: create_entry requires admin or operator role".into());
+        return Err("ERR_PERMISSION: create_invoice not granted".into());
     }
 
     validate_entry_links(conn, payload)?;
@@ -209,14 +210,15 @@ pub fn logic_update_entry(
     payload: &EntryPayload,
     expected_row_version: i64,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
-    if acting_role != "admin" && acting_role != "operator" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "edit_invoice") {
         log_security_event(
             conn, "update_entry", session_user_id,
-            "ERR_PERMISSION: update_entry requires admin or operator role",
+            "ERR_PERMISSION: edit_invoice not granted",
         );
-        return Err("ERR_PERMISSION: update_entry requires admin or operator role".into());
+        return Err("ERR_PERMISSION: edit_invoice not granted".into());
     }
 
     // Verify existence first so "not found" is distinct from CONFLICT.
@@ -301,7 +303,7 @@ pub fn create_entry(
 ) -> Result<i64, String> {
     let sess = session.get()?;
     db.with_conn(|conn| {
-        logic_create_entry(conn, &payload, created_by, &sess.role, Some(sess.user_id))
+        logic_create_entry(conn, &payload, created_by, &sess.role, &sess.permissions, Some(sess.user_id))
     })
 }
 
@@ -314,7 +316,7 @@ pub fn update_entry(
     payload: EntryPayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_entry(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_entry(conn, id, &payload, expected_row_version, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -420,14 +422,14 @@ mod tests {
     #[test]
     fn create_denied_for_viewer() {
         let conn = create_test_db();
-        let err = logic_create_entry(&conn, &minimal_payload(), None, "viewer", None).unwrap_err();
+        let err = logic_create_entry(&conn, &minimal_payload(), None, "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]
     fn update_denied_for_viewer() {
         let conn = create_test_db();
-        let err = logic_update_entry(&conn, 1, &minimal_payload(), 1, "viewer", None).unwrap_err();
+        let err = logic_update_entry(&conn, 1, &minimal_payload(), 1, "viewer", &[], None).unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
@@ -450,24 +452,24 @@ mod tests {
     #[test]
     fn create_succeeds_for_admin() {
         let conn = create_test_db();
-        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         assert!(id > 0);
     }
 
     #[test]
     fn create_succeeds_for_operator() {
         let conn = create_test_db();
-        let id = logic_create_entry(&conn, &minimal_payload(), None, "operator", None).unwrap();
+        let id = logic_create_entry(&conn, &minimal_payload(), None, "operator", &["create_invoice".to_string()], None).unwrap();
         assert!(id > 0);
     }
 
     #[test]
     fn update_succeeds_for_existing_entry() {
         let conn = create_test_db();
-        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         let mut p = minimal_payload();
         p.local_invoice_no = "LI-999".into();
-        logic_update_entry(&conn, id, &p, 1, "admin", None).unwrap();
+        logic_update_entry(&conn, id, &p, 1, "admin", &[], None).unwrap();
         let stored: String = conn
             .query_row(
                 "SELECT local_invoice_no FROM entries WHERE id=?1", [id], |r| r.get(0)
@@ -479,7 +481,7 @@ mod tests {
     #[test]
     fn delete_removes_entry() {
         let conn = create_test_db();
-        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         logic_delete_entry(&conn, id, "admin", None).unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM entries WHERE id=?1", [id], |r| r.get(0))
@@ -503,7 +505,7 @@ mod tests {
                 quantity: 3.0, unit: "NOS".into(), unit_price: 5.0, total_amount: 15.0,
             },
         ];
-        let id = logic_create_entry(&conn, &p, None, "admin", None).unwrap();
+        let id = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap();
         let stored: f64 = conn
             .query_row("SELECT invoice_total FROM entries WHERE id=?1", [id], |r| r.get(0))
             .unwrap();
@@ -517,7 +519,7 @@ mod tests {
         let conn = create_test_db();
         let mut p = minimal_payload();
         p.customer_id = Some(9999);
-        let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
+        let err = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("customer"), "got: {err}");
     }
 
@@ -526,7 +528,7 @@ mod tests {
         let conn = create_test_db();
         let mut p = minimal_payload();
         p.invoice_id = Some(9999);
-        let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
+        let err = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("invoice"), "got: {err}");
     }
 
@@ -535,7 +537,7 @@ mod tests {
         let conn = create_test_db();
         let mut p = minimal_payload();
         p.purchase_order_id = Some(9999);
-        let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
+        let err = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("purchase order"), "got: {err}");
     }
 
@@ -560,7 +562,7 @@ mod tests {
         let mut p = minimal_payload();
         p.customer_id = Some(c1);
         p.invoice_id  = Some(inv_id);
-        let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
+        let err = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("does not belong"), "got: {err}");
     }
 
@@ -586,21 +588,21 @@ mod tests {
         let mut p = minimal_payload();
         p.invoice_id = Some(inv_id);
         p.purchase_order_id = Some(po_b);
-        let err = logic_create_entry(&conn, &p, None, "admin", None).unwrap_err();
+        let err = logic_create_entry(&conn, &p, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("does not match"), "got: {err}");
     }
 
     #[test]
     fn update_returns_err_for_nonexistent_entry() {
         let conn = create_test_db();
-        let err = logic_update_entry(&conn, 9999, &minimal_payload(), 1, "admin", None).unwrap_err();
+        let err = logic_update_entry(&conn, 9999, &minimal_payload(), 1, "admin", &[], None).unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
     }
 
     #[test]
     fn items_stored_as_valid_json() {
         let conn = create_test_db();
-        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", None).unwrap();
+        let id = logic_create_entry(&conn, &minimal_payload(), None, "admin", &[], None).unwrap();
         let raw: String = conn
             .query_row("SELECT items FROM entries WHERE id=?1", [id], |r| r.get(0))
             .unwrap();

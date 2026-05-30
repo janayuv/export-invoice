@@ -144,15 +144,24 @@ pub fn logic_create_invoice(
     payload: &InvoicePayload,
     created_by: Option<i64>,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<i64, String> {
-    if acting_role != "admin" && acting_role != "operator" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
         log_security_event(conn, "create_invoice", session_user_id,
-            "ERR_PERMISSION: create_invoice requires admin or operator role");
-        return Err(
-            "ERR_PERMISSION: create_invoice requires admin or operator role".into(),
-        );
+            "ERR_PERMISSION: create_invoice not granted");
+        return Err("ERR_PERMISSION: create_invoice not granted".into());
     }
+
+    let descriptions: Vec<String> = payload.items.iter().map(|i| i.description.clone()).collect();
+    crate::validation::validate_invoice_payload(
+        &payload.invoice_number,
+        &payload.notes,
+        &payload.consignee_name,
+        &payload.consignee_address,
+        payload.items.len(),
+        &descriptions,
+    )?;
 
     let packing_list_json = serde_json::to_string(
         payload.packing_list.as_deref().unwrap_or(&[]),
@@ -224,6 +233,7 @@ pub fn logic_update_invoice(
     payload: &InvoicePayload,
     expected_row_version: i64,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
     // Enforce RBAC against the *current* status before making changes.
@@ -239,23 +249,24 @@ pub fn logic_update_invoice(
     let current_status = current_status
         .ok_or_else(|| format!("Invoice {id} not found"))?;
 
-    match acting_role {
-        "admin" => {}
-        "operator" => {
-            if current_status == "final" {
-                log_security_event(conn, "update_invoice", session_user_id,
-                    "ERR_PERMISSION: operator cannot edit a finalized invoice");
-                return Err(
-                    "ERR_PERMISSION: operator cannot edit a finalized invoice".into(),
-                );
-            }
-        }
-        _ => {
+    if acting_role != "admin" {
+        let required = if current_status == "final" { "edit_final_invoice" } else { "edit_invoice" };
+        if !permissions.iter().any(|p| p == required) {
             log_security_event(conn, "update_invoice", session_user_id,
-                "ERR_PERMISSION: invoice update requires admin or operator");
-            return Err("ERR_PERMISSION: invoice update requires admin or operator".into());
+                &format!("ERR_PERMISSION: {required} not granted"));
+            return Err(format!("ERR_PERMISSION: {required} not granted"));
         }
     }
+
+    let descriptions: Vec<String> = payload.items.iter().map(|i| i.description.clone()).collect();
+    crate::validation::validate_invoice_payload(
+        &payload.invoice_number,
+        &payload.notes,
+        &payload.consignee_name,
+        &payload.consignee_address,
+        payload.items.len(),
+        &descriptions,
+    )?;
 
     let packing_list_json = serde_json::to_string(
         payload.packing_list.as_deref().unwrap_or(&[]),
@@ -321,11 +332,11 @@ pub fn logic_update_invoice(
     }
 }
 
-pub fn logic_delete_invoice(conn: &Connection, id: i64, acting_role: &str, session_user_id: Option<i64>) -> Result<(), String> {
-    if acting_role != "admin" {
+pub fn logic_delete_invoice(conn: &Connection, id: i64, acting_role: &str, permissions: &[String], session_user_id: Option<i64>) -> Result<(), String> {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "delete_invoice") {
         log_security_event(conn, "delete_invoice", session_user_id,
-            "ERR_PERMISSION: delete_invoice requires admin role");
-        return Err("ERR_PERMISSION: delete_invoice requires admin role".into());
+            "ERR_PERMISSION: delete_invoice not granted");
+        return Err("ERR_PERMISSION: delete_invoice not granted".into());
     }
 
     let inv_no: Option<String> = conn
@@ -379,12 +390,13 @@ pub fn logic_finalize_invoice(
     id: i64,
     finalized_by: Option<i64>,
     acting_role: &str,
+    permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<(), String> {
-    if acting_role != "admin" {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "finalize_invoice") {
         log_security_event(conn, "finalize_invoice", session_user_id,
-            "ERR_PERMISSION: finalize_invoice requires admin role");
-        return Err("ERR_PERMISSION: finalize_invoice requires admin role".into());
+            "ERR_PERMISSION: finalize_invoice not granted");
+        return Err("ERR_PERMISSION: finalize_invoice not granted".into());
     }
 
     let status: Option<String> = conn
@@ -429,7 +441,7 @@ pub fn create_invoice(
     payload: InvoicePayload,
 ) -> Result<i64, String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_create_invoice(conn, &payload, Some(sess.user_id), &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_create_invoice(conn, &payload, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -441,7 +453,7 @@ pub fn update_invoice(
     payload: InvoicePayload,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_update_invoice(conn, id, &payload, expected_row_version, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_update_invoice(conn, id, &payload, expected_row_version, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -451,7 +463,7 @@ pub fn delete_invoice(
     id: i64,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_delete_invoice(conn, id, &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_delete_invoice(conn, id, &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 #[tauri::command]
@@ -461,7 +473,7 @@ pub fn finalize_invoice(
     id: i64,
 ) -> Result<(), String> {
     let sess = session.get()?;
-    db.with_conn(|conn| logic_finalize_invoice(conn, id, Some(sess.user_id), &sess.role, Some(sess.user_id)))
+    db.with_conn(|conn| logic_finalize_invoice(conn, id, Some(sess.user_id), &sess.role, &sess.permissions, Some(sess.user_id)))
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -592,7 +604,7 @@ mod tests {
     #[test]
     fn create_as_admin_succeeds() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None)
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None)
             .unwrap();
         assert!(id > 0);
 
@@ -609,7 +621,7 @@ mod tests {
     #[test]
     fn create_as_operator_succeeds() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), Some(1), "operator", None)
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), Some(1), "operator", &["create_invoice".to_string()], None)
             .unwrap();
         assert!(id > 0);
     }
@@ -617,7 +629,7 @@ mod tests {
     #[test]
     fn create_as_viewer_denied() {
         let conn = create_test_db();
-        let err = logic_create_invoice(&conn, &minimal_payload("draft"), None, "viewer", None)
+        let err = logic_create_invoice(&conn, &minimal_payload("draft"), None, "viewer", &[], None)
             .unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -629,13 +641,13 @@ mod tests {
         // April 2025 → FY 2025-26
         let mut p = minimal_payload("draft");
         p.invoice_date = "2025-04-01".to_string();
-        let id1 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id1 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
         let num1: String = conn
             .query_row("SELECT invoice_number FROM invoices WHERE id=?1", [id1], |r| r.get(0))
             .unwrap();
         assert_eq!(num1, "EXP/1/2025-26");
 
-        let id2 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id2 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
         let num2: String = conn
             .query_row("SELECT invoice_number FROM invoices WHERE id=?1", [id2], |r| r.get(0))
             .unwrap();
@@ -643,7 +655,7 @@ mod tests {
 
         // January 2025 → FY 2024-25 (separate sequence)
         p.invoice_date = "2025-01-10".to_string();
-        let id3 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id3 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
         let num3: String = conn
             .query_row("SELECT invoice_number FROM invoices WHERE id=?1", [id3], |r| r.get(0))
             .unwrap();
@@ -656,7 +668,7 @@ mod tests {
         // the item re-INSERT, silently clearing it on every save. This Rust
         // implementation must not repeat that bug.
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
 
         let sa_before: String = conn
             .query_row(
@@ -670,7 +682,7 @@ mod tests {
         let mut p = minimal_payload("draft");
         p.invoice_number = format!("EXP/1/2025-26"); // keep same invoice number
         p.items[0].sa_number = "SA-99".to_string();
-        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 1, "admin", &[], None).unwrap();
 
         let sa_after: String = conn
             .query_row(
@@ -685,8 +697,8 @@ mod tests {
     #[test]
     fn operator_cannot_edit_final_invoice() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", None).unwrap();
-        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "operator", None)
+        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", &[], None).unwrap();
+        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "operator", &["edit_invoice".to_string()], None)
             .unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -694,10 +706,10 @@ mod tests {
     #[test]
     fn admin_can_edit_final_invoice() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", None).unwrap();
+        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", &[], None).unwrap();
         let mut p = minimal_payload("draft");
         p.invoice_number = "EXP/1/2025-26".to_string();
-        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 1, "admin", &[], None).unwrap();
         let status: String = conn
             .query_row("SELECT status FROM invoices WHERE id=?1", [id], |r| r.get(0))
             .unwrap();
@@ -707,8 +719,8 @@ mod tests {
     #[test]
     fn viewer_cannot_update() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
-        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "viewer", None)
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
+        let err = logic_update_invoice(&conn, id, &minimal_payload("draft"), 1, "viewer", &[], None)
             .unwrap_err();
         assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
@@ -716,7 +728,7 @@ mod tests {
     #[test]
     fn update_nonexistent_invoice_returns_error() {
         let conn = create_test_db();
-        let err = logic_update_invoice(&conn, 9999, &minimal_payload("draft"), 1, "admin", None)
+        let err = logic_update_invoice(&conn, 9999, &minimal_payload("draft"), 1, "admin", &[], None)
             .unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
     }
@@ -724,16 +736,16 @@ mod tests {
     #[test]
     fn update_with_stale_row_version_returns_conflict() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
         // First update succeeds and bumps row_version to 2.
         let mut p = minimal_payload("draft");
         p.invoice_number = "EXP/1/2025-26".to_string();
-        logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 1, "admin", &[], None).unwrap();
         // Second update with stale version 1 must be rejected.
-        let err = logic_update_invoice(&conn, id, &p, 1, "admin", None).unwrap_err();
+        let err = logic_update_invoice(&conn, id, &p, 1, "admin", &[], None).unwrap_err();
         assert!(err.contains("CONFLICT"), "expected CONFLICT, got: {err}");
         // Correct version 2 succeeds.
-        logic_update_invoice(&conn, id, &p, 2, "admin", None).unwrap();
+        logic_update_invoice(&conn, id, &p, 2, "admin", &[], None).unwrap();
     }
 
     #[test]
@@ -749,7 +761,7 @@ mod tests {
             net_weight: Some("10.5".to_string()),
             gross_weight: Some("11.0".to_string()),
         }]);
-        let id = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
 
         let pl_json: String = conn
             .query_row("SELECT packing_list FROM invoices WHERE id=?1", [id], |r| r.get(0))
@@ -762,9 +774,9 @@ mod tests {
     #[test]
     fn delete_requires_admin() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
-        assert!(logic_delete_invoice(&conn, id, "operator", None).is_err());
-        assert!(logic_delete_invoice(&conn, id, "viewer", None).is_err());
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
+        assert!(logic_delete_invoice(&conn, id, "operator", &[], None).is_err());
+        assert!(logic_delete_invoice(&conn, id, "viewer", &[], None).is_err());
     }
 
     #[test]
@@ -772,11 +784,11 @@ mod tests {
         let conn = create_test_db();
         let mut p = minimal_payload("draft");
         p.invoice_date = "2025-06-01".to_string();
-        let id1 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
-        let id2 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id1 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
+        let id2 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
 
         // Sequence is now at 2 (EXP/1/… and EXP/2/…).
-        logic_delete_invoice(&conn, id2, "admin", None).unwrap();
+        logic_delete_invoice(&conn, id2, "admin", &[], None).unwrap();
 
         // Invoice is gone.
         let count: i64 = conn
@@ -795,7 +807,7 @@ mod tests {
         assert_eq!(seq, 1, "sequence should be 1 after deleting EXP/2/…");
 
         // Create again — should reclaim EXP/2/2025-26.
-        let id3 = logic_create_invoice(&conn, &p, None, "admin", None).unwrap();
+        let id3 = logic_create_invoice(&conn, &p, None, "admin", &[], None).unwrap();
         let _ = id1; // keep id1 in scope
         let num: String = conn
             .query_row("SELECT invoice_number FROM invoices WHERE id=?1", [id3], |r| r.get(0))
@@ -808,16 +820,16 @@ mod tests {
     #[test]
     fn finalize_requires_admin() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
-        assert!(logic_finalize_invoice(&conn, id, None, "operator", None).is_err());
-        assert!(logic_finalize_invoice(&conn, id, None, "viewer", None).is_err());
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
+        assert!(logic_finalize_invoice(&conn, id, None, "operator", &[], None).is_err());
+        assert!(logic_finalize_invoice(&conn, id, None, "viewer", &[], None).is_err());
     }
 
     #[test]
     fn finalize_sets_status_and_finalized_by() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", None).unwrap();
-        logic_finalize_invoice(&conn, id, Some(42), "admin", None).unwrap();
+        let id = logic_create_invoice(&conn, &minimal_payload("draft"), None, "admin", &[], None).unwrap();
+        logic_finalize_invoice(&conn, id, Some(42), "admin", &[], None).unwrap();
 
         let (status, fin_by): (String, Option<i64>) = conn
             .query_row(
@@ -833,15 +845,15 @@ mod tests {
     #[test]
     fn finalize_already_final_returns_err() {
         let conn = create_test_db();
-        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", None).unwrap();
-        let err = logic_finalize_invoice(&conn, id, None, "admin", None).unwrap_err();
+        let id = logic_create_invoice(&conn, &minimal_payload("final"), None, "admin", &[], None).unwrap();
+        let err = logic_finalize_invoice(&conn, id, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("already finalized"), "got: {err}");
     }
 
     #[test]
     fn finalize_nonexistent_invoice_returns_err() {
         let conn = create_test_db();
-        let err = logic_finalize_invoice(&conn, 9999, None, "admin", None).unwrap_err();
+        let err = logic_finalize_invoice(&conn, 9999, None, "admin", &[], None).unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
     }
 }

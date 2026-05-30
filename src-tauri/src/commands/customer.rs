@@ -144,8 +144,7 @@ pub fn logic_delete_customer(
 
     if po_count > 0 || inv_count > 0 || entry_count > 0 {
         return Err(format!(
-            "Cannot delete: customer has {} purchase order(s), {} invoice(s), {} entry(ies).",
-            po_count, inv_count, entry_count
+            "Cannot delete: customer has {po_count} purchase order(s), {inv_count} invoice(s), {entry_count} entry(ies)."
         ));
     }
 

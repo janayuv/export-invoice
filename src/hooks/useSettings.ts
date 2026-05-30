@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
+import { withRetry } from "@/lib/retry";
 import type { CompanySettings } from "@/lib/types";
 
 export function useSettings() {
@@ -11,10 +12,12 @@ export function useSettings() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const db = await getDb();
-      const rows = await db.select<CompanySettings[]>(
-        "SELECT * FROM company_settings WHERE id = 1"
-      );
+      const rows = await withRetry(async () => {
+        const db = await getDb();
+        return db.select<CompanySettings[]>(
+          "SELECT * FROM company_settings WHERE id = 1"
+        );
+      });
       setSettings(rows[0] ?? null);
       setError(null);
     } catch (e) {

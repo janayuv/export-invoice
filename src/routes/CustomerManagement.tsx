@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Globe, Building2, MapPin, Truck } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Globe, MapPin, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +47,7 @@ const EMPTY_FORM: CustomerFormData = {
 };
 
 export function CustomerManagement() {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -111,7 +114,13 @@ export function CustomerManagement() {
   }
 
   async function handleDelete(c: Customer) {
-    if (!confirm(`Delete customer "${c.name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete customer?",
+      description: `Delete customer "${c.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await deleteCustomer(c.id);
       toast.success("Customer deleted");
@@ -122,28 +131,20 @@ export function CustomerManagement() {
   }
 
   return (
-    <div className="min-h-full bg-muted/30">
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <Building2 size={18} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-foreground">Customers</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-            Saved consignees — select when creating an invoice to auto-fill fields
-                </p>
-              </div>
-            </div>
-            {!panelMode && (
-              <Button onClick={openAdd}>
-                <Plus size={16} className="mr-1" /> Add Customer
-              </Button>
-            )}
-          </div>
-        </div>
+    <div className="p-[18px] space-y-3 animate-fade-up max-w-5xl mx-auto">
+      {confirmDialog}
+
+      <PageHeader
+        title="Customers"
+        subtitle="Saved consignees — select when creating an invoice to auto-fill fields"
+        actions={
+          !panelMode ? (
+            <Button size="sm" onClick={openAdd}>
+              <Plus size={13} className="mr-1.5" /> Add Customer
+            </Button>
+          ) : undefined
+        }
+      />
 
         {/* Inline form panel */}
         {panelMode && (
@@ -345,7 +346,6 @@ export function CustomerManagement() {
             </TableBody>
           </Table>
         </div>
-      </div>
     </div>
   );
 }
