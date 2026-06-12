@@ -176,6 +176,7 @@ mod tests {
             lut_arn_date: "2025-04-01".into(),
             place: "Mumbai".into(),
             signatory_name: "Jane Doe".into(),
+            fiscal_year: "2025-26".into(),
         }
     }
 
