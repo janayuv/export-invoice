@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import type { InvoiceFormSchema } from "@/lib/schemas";
 import { rateColumnLabel } from "@/lib/invoiceDocument";
+import type { POItem } from "@/hooks/usePurchaseOrders";
 
 export const DIMENSION_UNITS = ["MM", "CM", "INCH"] as const;
 
@@ -31,7 +32,13 @@ function newRowDefaults(srNo: number) {
   };
 }
 
-export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolean }) {
+export function GoodsItemsTable({
+  showSaNumber = true,
+  poItems = [],
+}: {
+  showSaNumber?: boolean;
+  poItems?: POItem[];
+}) {
   const { control, register, setValue, formState: { errors } } = useFormContext<InvoiceFormSchema>();
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const incoterm = useWatch({ control, name: "incoterm" });
@@ -70,6 +77,7 @@ export function GoodsItemsTable({ showSaNumber = true }: { showSaNumber?: boolea
                 control={control}
                 setValue={setValue}
                 showSaNumber={showSaNumber}
+                poItems={poItems}
               />
             ))}
           </tbody>
@@ -154,6 +162,7 @@ function GoodsRow({
   control,
   setValue,
   showSaNumber,
+  poItems = [],
 }: {
   index: number;
   onRemove: () => void;
@@ -162,6 +171,7 @@ function GoodsRow({
   control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
   setValue: ReturnType<typeof useFormContext<InvoiceFormSchema>>["setValue"];
   showSaNumber: boolean;
+  poItems?: POItem[];
 }) {
   // Only subscribe to `included` — the checkbox flag that dims the row.
   // qty/price are uncontrolled inputs; totals are computed in RowTotal via
@@ -195,7 +205,11 @@ function GoodsRow({
         </Td>
       )}
       <Td>
-        <Input className="min-w-[100px] h-8 text-xs" {...register(`items.${index}.part_number`)} />
+        {poItems.some((p) => p.part_number.trim() !== "") ? (
+          <PartDropdown index={index} poItems={poItems} control={control} setValue={setValue} />
+        ) : (
+          <Input className="min-w-[100px] h-8 text-xs" {...register(`items.${index}.part_number`)} />
+        )}
       </Td>
       <Td>
         <Input className="min-w-[180px] h-8 text-xs" {...register(`items.${index}.description`)} />
@@ -259,6 +273,50 @@ function RowTotal({
         maximumFractionDigits: 2,
       })}
     </>
+  );
+}
+
+function PartDropdown({
+  index,
+  poItems,
+  control,
+  setValue,
+}: {
+  index: number;
+  poItems: POItem[];
+  control: ReturnType<typeof useFormContext<InvoiceFormSchema>>["control"];
+  setValue: ReturnType<typeof useFormContext<InvoiceFormSchema>>["setValue"];
+}) {
+  const currentValue = useWatch({ control, name: `items.${index}.part_number` });
+  const options = poItems.filter((p) => p.part_number.trim() !== "");
+
+  function handleSelect(partNumber: string | null) {
+    if (!partNumber) return;
+    const item = options.find((p) => p.part_number === partNumber);
+    setValue(`items.${index}.part_number`, partNumber);
+    if (item) {
+      setValue(`items.${index}.sa_number`, item.sa_number);
+      setValue(`items.${index}.description`, item.description);
+      setValue(`items.${index}.quantity`, item.quantity, { shouldValidate: true });
+      setValue(`items.${index}.unit`, item.unit);
+      setValue(`items.${index}.unit_price`, item.unit_price, { shouldValidate: true });
+      setValue(`items.${index}.total_amount`, item.total_amount);
+    }
+  }
+
+  return (
+    <Select value={currentValue ?? ""} onValueChange={handleSelect}>
+      <SelectTrigger className="min-w-[120px] h-8 text-xs">
+        <SelectValue placeholder="Select part…" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((item) => (
+          <SelectItem key={item.sr_no} value={item.part_number}>
+            {item.part_number}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   ClipboardList,
   Users,
+  CloudUpload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -196,12 +197,124 @@ function OverviewTab() {
 
 // ── Tab 2: Backup / Restore ─────────────────────────────────────────────────────
 
+// ── Google Drive types ──────────────────────────────────────────────────────────
+
+type GDriveConnectStatus = { connected: boolean; email: string | null };
+type OAuthConfigStatus = { client_id: string; has_secret: boolean };
+type GDriveBackupResult = {
+  file_id: string;
+  file_name: string;
+  web_view_link: string | null;
+  size_bytes: number;
+  sha256: string;
+  integrity_ok: boolean;
+};
+type GDriveFile = {
+  id: string;
+  name: string;
+  created_time: string;
+  size_bytes: string | null;
+  web_view_link: string | null;
+};
+
 function BackupTab() {
   const [backupStatus, setBackupStatus] = useState<"creating" | "verifying" | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [backupResult, setBackupResult] = useState<VerifyState>(null);
   const [verifyResult, setVerifyResult] = useState<VerifyState>(null);
+
+  const [gdrive, setGdrive] = useState<GDriveConnectStatus>({ connected: false, email: null });
+  const [gdriveConnecting, setGdriveConnecting] = useState(false);
+  const [gdriveUploading, setGdriveUploading] = useState(false);
+  const [gdriveLastUpload, setGdriveLastUpload] = useState<GDriveBackupResult | null>(null);
+  const [gdriveFiles, setGdriveFiles] = useState<GDriveFile[]>([]);
+  const [gdriveLoadingFiles, setGdriveLoadingFiles] = useState(false);
+  const [oauthConfig, setOauthConfig] = useState<OAuthConfigStatus>({ client_id: "", has_secret: false });
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  useEffect(() => {
+    invoke<GDriveConnectStatus>("gdrive_get_status").then(setGdrive).catch(() => {});
+    invoke<OAuthConfigStatus>("gdrive_get_oauth_config").then(setOauthConfig).catch(() => {});
+  }, []);
+
+  const handleSaveOAuthConfig = async (clientId: string, clientSecret: string) => {
+    setSavingConfig(true);
+    try {
+      await invoke("gdrive_save_oauth_config", { clientId, clientSecret });
+      const updated = await invoke<OAuthConfigStatus>("gdrive_get_oauth_config");
+      setOauthConfig(updated);
+      toast.success("OAuth credentials saved");
+    } catch (err) {
+      toast.error(`Save failed: ${stripErrPrefix(err)}`);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const loadGdriveFiles = useCallback(async () => {
+    setGdriveLoadingFiles(true);
+    try {
+      setGdriveFiles(await invoke<GDriveFile[]>("gdrive_list_backups"));
+    } catch (err) {
+      if (!String(err).includes("ERR_SCOPE:")) {
+        toast.error(`Could not list Drive files: ${stripErrPrefix(err)}`);
+      }
+    } finally {
+      setGdriveLoadingFiles(false);
+    }
+  }, []);
+
+  const handleGdriveConnect = async () => {
+    setGdriveConnecting(true);
+    try {
+      const status = await invoke<GDriveConnectStatus>("gdrive_start_auth");
+      setGdrive(status);
+      toast.success(`Connected as ${status.email}`);
+      loadGdriveFiles();
+    } catch (err) {
+      toast.error(`Connection failed: ${stripErrPrefix(err)}`);
+    } finally {
+      setGdriveConnecting(false);
+    }
+  };
+
+  const handleGdriveDisconnect = async () => {
+    try {
+      await invoke("gdrive_disconnect");
+      setGdrive({ connected: false, email: null });
+      setGdriveFiles([]);
+      setGdriveLastUpload(null);
+      toast.success("Disconnected from Google Drive");
+    } catch (err) {
+      toast.error(stripErrPrefix(err));
+    }
+  };
+
+  const handleScopeError = (err: unknown): boolean => {
+    if (String(err).includes("ERR_SCOPE:")) {
+      setGdrive({ connected: false, email: null });
+      setGdriveFiles([]);
+      toast.error(stripErrPrefix(err), { duration: 8000 });
+      return true;
+    }
+    return false;
+  };
+
+  const handleGdriveBackup = async () => {
+    setGdriveUploading(true);
+    setGdriveLastUpload(null);
+    try {
+      const result = await invoke<GDriveBackupResult>("gdrive_backup_and_upload");
+      setGdriveLastUpload(result);
+      toast.success(`Uploaded: ${result.file_name}`);
+      loadGdriveFiles();
+    } catch (err) {
+      if (!handleScopeError(err)) toast.error(`Drive backup failed: ${stripErrPrefix(err)}`);
+    } finally {
+      setGdriveUploading(false);
+    }
+  };
 
   const handleBackup = async () => {
     setBackupResult(null);
@@ -284,44 +397,68 @@ function BackupTab() {
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <ActionCard
-        icon={Download}
-        title="Create Backup"
-        desc="Save a verified snapshot of the current database to a file."
-        button={
-          <Button onClick={handleBackup} disabled={backupStatus !== null} className="w-full">
-            {backupStatus === "creating"
-              ? "Creating…"
-              : backupStatus === "verifying"
-                ? "Verifying…"
-                : "Create Backup"}
-          </Button>
-        }
-        result={backupResult}
-      />
-      <ActionCard
-        icon={Upload}
-        title="Restore Backup"
-        desc="Validate a backup file and stage it. Takes effect after restart."
-        button={
-          <Button onClick={handleRestore} disabled={restoring} variant="outline" className="w-full">
-            {restoring ? "Validating…" : "Restore…"}
-          </Button>
-        }
-        result={null}
-      />
-      <ActionCard
-        icon={ShieldCheck}
-        title="Verify Backup"
-        desc="Check the integrity and SHA-256 hash of a backup file."
-        button={
-          <Button onClick={handleVerify} disabled={verifying} variant="outline" className="w-full">
-            {verifying ? "Verifying…" : "Verify…"}
-          </Button>
-        }
-        result={verifyResult}
-      />
+        <ActionCard
+          icon={Download}
+          title="Create Backup"
+          desc="Save a verified snapshot of the current database to a file."
+          button={
+            <Button onClick={handleBackup} disabled={backupStatus !== null} className="w-full">
+              {backupStatus === "creating"
+                ? "Creating…"
+                : backupStatus === "verifying"
+                  ? "Verifying…"
+                  : "Create Backup"}
+            </Button>
+          }
+          result={backupResult}
+        />
+        <ActionCard
+          icon={Upload}
+          title="Restore Backup"
+          desc="Validate a backup file and stage it. Takes effect after restart."
+          button={
+            <Button onClick={handleRestore} disabled={restoring} variant="outline" className="w-full">
+              {restoring ? "Validating…" : "Restore…"}
+            </Button>
+          }
+          result={null}
+        />
+        <ActionCard
+          icon={ShieldCheck}
+          title="Verify Backup"
+          desc="Check the integrity and SHA-256 hash of a backup file."
+          button={
+            <Button onClick={handleVerify} disabled={verifying} variant="outline" className="w-full">
+              {verifying ? "Verifying…" : "Verify…"}
+            </Button>
+          }
+          result={verifyResult}
+        />
       </div>
+      <GDriveCard
+        status={gdrive}
+        oauthConfig={oauthConfig}
+        savingConfig={savingConfig}
+        connecting={gdriveConnecting}
+        uploading={gdriveUploading}
+        lastUpload={gdriveLastUpload}
+        files={gdriveFiles}
+        loadingFiles={gdriveLoadingFiles}
+        onSaveConfig={handleSaveOAuthConfig}
+        onConnect={handleGdriveConnect}
+        onDisconnect={handleGdriveDisconnect}
+        onBackup={handleGdriveBackup}
+        onListFiles={loadGdriveFiles}
+        onRestore={async (fileId, fileName) => {
+          if (!confirm(`Restore from "${fileName}"?\n\nThis stages the restore — the app must restart to apply it.`)) return;
+          try {
+            await invoke("gdrive_download_and_stage_restore", { fileId, fileName });
+            toast.success("Backup staged — restart the app to complete restore");
+          } catch (err) {
+            toast.error(`Restore failed: ${stripErrPrefix(err)}`);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -357,6 +494,228 @@ function ActionCard({
           <span className="text-zinc-500">
             {result.sizeKb} KB · {result.sha256.slice(0, 8)}…
           </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GDriveCard({
+  status,
+  oauthConfig,
+  savingConfig,
+  connecting,
+  uploading,
+  lastUpload,
+  files,
+  loadingFiles,
+  onSaveConfig,
+  onConnect,
+  onDisconnect,
+  onBackup,
+  onListFiles,
+  onRestore,
+}: {
+  status: GDriveConnectStatus;
+  oauthConfig: OAuthConfigStatus;
+  savingConfig: boolean;
+  connecting: boolean;
+  uploading: boolean;
+  lastUpload: GDriveBackupResult | null;
+  files: GDriveFile[];
+  loadingFiles: boolean;
+  onSaveConfig: (clientId: string, clientSecret: string) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onBackup: () => void;
+  onListFiles: () => void;
+  onRestore: (fileId: string, fileName: string) => void;
+}) {
+  const [clientId, setClientId] = useState(oauthConfig.client_id);
+  const [clientSecret, setClientSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [showConfigForm, setShowConfigForm] = useState(!oauthConfig.client_id);
+
+  // Sync clientId when oauthConfig loads
+  useEffect(() => {
+    setClientId(oauthConfig.client_id);
+    setShowConfigForm(!oauthConfig.client_id);
+  }, [oauthConfig.client_id]);
+
+  return (
+    <div className="rounded-xl ring-1 ring-foreground/10 bg-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CloudUpload size={16} className="text-indigo-400" />
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Google Drive Backup</h3>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowConfigForm(v => !v)}
+            className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+          >
+            {showConfigForm ? "Hide setup" : "OAuth setup"}
+          </button>
+          {status.connected && (
+            <button
+              type="button"
+              onClick={onDisconnect}
+              className="text-[11px] text-zinc-400 hover:text-red-500 transition-colors"
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* OAuth credentials form */}
+      {showConfigForm && (
+        <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 p-3 space-y-2.5">
+          <p className="text-[11px] text-zinc-500 leading-relaxed">
+            Create a <strong>Desktop app</strong> OAuth 2.0 client in{" "}
+            <span className="font-mono">Google Cloud Console → APIs &amp; Services → Credentials</span>,
+            enable the Drive API, then paste the credentials below.
+          </p>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Client ID</label>
+            <input
+              type="text"
+              value={clientId}
+              onChange={e => setClientId(e.target.value)}
+              placeholder="xxxx.apps.googleusercontent.com"
+              className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2.5 py-1.5 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
+              Client Secret{" "}
+              <span className="font-normal text-zinc-400">(optional — PKCE works without it)</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showSecret ? "text" : "password"}
+                value={clientSecret}
+                onChange={e => setClientSecret(e.target.value)}
+                placeholder={oauthConfig.has_secret ? "••••••••  (saved — leave blank to keep)" : "Paste secret or leave empty"}
+                className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2.5 py-1.5 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 pr-14"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret(v => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 hover:text-zinc-600"
+              >
+                {showSecret ? "hide" : "show"}
+              </button>
+            </div>
+          </div>
+          <Button
+            onClick={() => onSaveConfig(clientId, clientSecret)}
+            disabled={savingConfig || !clientId.trim()}
+            size="sm"
+            className="w-full"
+          >
+            {savingConfig ? "Saving…" : "Save Credentials"}
+          </Button>
+        </div>
+      )}
+
+      {!status.connected ? (
+        /* ── Not connected ── */
+        <div className="space-y-3">
+          <p className="text-xs text-zinc-500">
+            Connect your Google account to back up the database directly to Google Drive.
+            Uses OAuth 2.0 with PKCE — no password stored, only a revocable access token.
+          </p>
+          {connecting && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Browser opened — complete authorization then return here…
+            </p>
+          )}
+          <Button onClick={onConnect} disabled={connecting || !oauthConfig.client_id} className="w-full">
+            {connecting ? "Waiting for authorization…" : "Connect Google Drive"}
+          </Button>
+          {!oauthConfig.client_id && (
+            <p className="text-[11px] text-zinc-400 text-center">Enter Client ID above to enable</p>
+          )}
+        </div>
+      ) : (
+        /* ── Connected ── */
+        <div className="space-y-3">
+          <div className="flex items-center gap-1.5 text-xs">
+            <CheckCircle2 size={13} className="text-emerald-500" />
+            <span className="text-zinc-600 dark:text-zinc-300">{status.email}</span>
+          </div>
+
+          <Button onClick={onBackup} disabled={uploading} className="w-full">
+            {uploading ? "Backing up…" : "Backup to Google Drive"}
+          </Button>
+
+          {lastUpload && (
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2 space-y-0.5">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                <CheckCircle2 size={12} />
+                <span className="truncate">{lastUpload.file_name}</span>
+              </div>
+              <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                {Math.round(lastUpload.size_bytes / 1024)} KB · SHA-256: {lastUpload.sha256.slice(0, 12)}…
+              </div>
+              {lastUpload.web_view_link && (
+                <a
+                  href={lastUpload.web_view_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-indigo-500 hover:underline"
+                >
+                  View in Google Drive ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Recent backups list */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide">Recent Backups</span>
+              <button
+                type="button"
+                onClick={onListFiles}
+                disabled={loadingFiles}
+                className="text-[11px] text-indigo-400 hover:text-indigo-600 disabled:opacity-40"
+              >
+                {loadingFiles ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+            {files.length === 0 ? (
+              <p className="text-[11px] text-zinc-400">
+                {loadingFiles ? "Loading…" : "No backups on Drive yet."}
+              </p>
+            ) : (
+              <ul className="space-y-1 max-h-40 overflow-y-auto">
+                {files.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
+                    <span className="text-zinc-600 dark:text-zinc-400 truncate" title={f.name}>
+                      {f.name}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0 text-zinc-400">
+                      {f.size_bytes && <span>{Math.round(Number(f.size_bytes) / 1024)} KB</span>}
+                      {f.web_view_link && (
+                        <a href={f.web_view_link} target="_blank" rel="noreferrer" className="hover:text-indigo-400">↗</a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onRestore(f.id, f.name)}
+                        className="text-amber-500 hover:text-amber-400 font-medium"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>

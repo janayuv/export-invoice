@@ -100,7 +100,29 @@ fn fiscal_year(date: &str) -> Result<FiscalYear, String> {
 /// Atomically increments the fiscal-year counter and returns the allocated number.
 /// Must be called inside an open transaction.
 fn allocate_invoice_number(conn: &Connection, invoice_date: &str) -> Result<String, String> {
-    let fy = fiscal_year(invoice_date)?;
+    // Use the configured fiscal year override if one is set; otherwise derive from date.
+    let override_fy: String = conn
+        .query_row(
+            "SELECT COALESCE(fiscal_year, '') FROM company_settings WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+
+    let fy = if override_fy.trim().is_empty() {
+        fiscal_year(invoice_date)?
+    } else {
+        let s = override_fy.trim();
+        let parts: Vec<&str> = s.splitn(2, '-').collect();
+        if parts.len() != 2 {
+            return Err(format!("Invalid fiscal_year setting: {s}"));
+        }
+        let start: i64 = parts[0]
+            .parse()
+            .map_err(|_| format!("Invalid fiscal_year setting: {s}"))?;
+        FiscalYear { start, label: s.to_string() }
+    };
+
     conn.execute(
         "INSERT OR IGNORE INTO invoice_sequence (year, last_number) VALUES (?1, 0)",
         [fy.start],

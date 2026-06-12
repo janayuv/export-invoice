@@ -134,6 +134,14 @@ pub fn run() {
             commands::admin::update_agent_settings,
             commands::admin::run_agent_task,
             commands::admin::read_app_log_tail,
+            commands::gdrive::gdrive_get_oauth_config,
+            commands::gdrive::gdrive_save_oauth_config,
+            commands::gdrive::gdrive_get_status,
+            commands::gdrive::gdrive_start_auth,
+            commands::gdrive::gdrive_backup_and_upload,
+            commands::gdrive::gdrive_list_backups,
+            commands::gdrive::gdrive_disconnect,
+            commands::gdrive::gdrive_download_and_stage_restore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

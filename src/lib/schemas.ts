@@ -19,6 +19,7 @@ export const companySettingsSchema = z.object({
   lut_arn_date: str(LIMITS.SHORT_TEXT),
   place: str(LIMITS.SHORT_TEXT),
   signatory_name: str(LIMITS.NAME),
+  fiscal_year: str(LIMITS.SHORT_TEXT),
 });
 
 export type CompanySettingsFormValues = z.infer<typeof companySettingsSchema>;

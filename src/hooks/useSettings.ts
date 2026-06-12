@@ -48,6 +48,7 @@ export function useSettings() {
         lut_arn_date: data.lut_arn_date ?? "",
         place: data.place ?? "",
         signatory_name: data.signatory_name ?? "",
+        fiscal_year: data.fiscal_year ?? "",
       },
     });
     await load();

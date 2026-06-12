@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -7,6 +7,7 @@ import {
   Building2,
   Database,
   FolderOpen,
+  Hash,
   ImageIcon,
   Landmark,
   LayoutGrid,
@@ -16,6 +17,13 @@ import {
   UserCheck,
   X,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/PageHeader";
 import { PageLoader } from "@/components/PageLoader";
@@ -47,11 +55,20 @@ export function Settings() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useForm<CompanySettingsFormValues, any, CompanySettingsFormValues>({
     resolver: zodResolver(companySettingsSchema) as any,
   });
+
+  const fiscalYearOptions = (() => {
+    const options: string[] = [];
+    for (let start = 2023; start <= 2030; start++) {
+      options.push(`${start}-${String(start + 1).slice(-2)}`);
+    }
+    return options;
+  })();
 
   useEffect(() => {
     if (settings) reset(settings);
@@ -216,6 +233,42 @@ export function Settings() {
               className="text-[12px] resize-none"
             />
           </Field>
+        </div>
+      </SettingsCard>
+
+      {/* ── Card: Invoice Numbering ── */}
+      <SettingsCard
+        icon={Hash}
+        title="Invoice Numbering"
+        description="Fiscal year shown in every invoice number (e.g. EXP/1/2025-26)."
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Active Fiscal Year" error={errors.fiscal_year?.message}>
+            <Controller
+              name="fiscal_year"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                  <SelectTrigger className="text-[12px]">
+                    <SelectValue placeholder="Auto (from invoice date)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Auto (from invoice date)</SelectItem>
+                    {fiscalYearOptions.map((fy) => (
+                      <SelectItem key={fy} value={fy}>
+                        {fy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+          <div className="flex items-end pb-1">
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              Lock new invoices to a fixed FY, or leave on Auto to derive from the invoice date.
+            </p>
+          </div>
         </div>
       </SettingsCard>
 

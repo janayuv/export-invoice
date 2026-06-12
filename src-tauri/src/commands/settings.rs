@@ -20,6 +20,7 @@ pub struct SettingsPayload {
     pub lut_arn_date: String,
     pub place: String,
     pub signatory_name: String,
+    pub fiscal_year: String,
 }
 
 pub fn logic_save_company_settings(
@@ -44,7 +45,7 @@ pub fn logic_save_company_settings(
             name=?1, address=?2, gstin=?3, pan=?4, iec=?5,
             bank_name=?6, bank_account=?7, ifsc=?8, swift=?9,
             bank_ad_code=?10, lut_arn_no=?11, lut_arn_date=?12,
-            place=?13, signatory_name=?14,
+            place=?13, signatory_name=?14, fiscal_year=?15,
             updated_at=datetime('now')
          WHERE id=1",
         rusqlite::params![
@@ -62,6 +63,7 @@ pub fn logic_save_company_settings(
             payload.lut_arn_date.trim(),
             payload.place.trim(),
             payload.signatory_name.trim(),
+            payload.fiscal_year.trim(),
         ],
     )
     .map_err(|e| e.to_string())?;

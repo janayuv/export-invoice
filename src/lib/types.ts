@@ -19,6 +19,7 @@ export interface CompanySettings {
   place: string;
   signatory_name: string;
   company_logo_base64: string;
+  fiscal_year: string;
   created_at: string;
   updated_at: string;
 }

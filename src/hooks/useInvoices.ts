@@ -14,14 +14,30 @@ function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
 
 // Read-only preview — no DB write. Used by the form to display the likely next number.
 export async function generateInvoiceNumber(date?: Date): Promise<string> {
-  const { fyStart, fyLabel } = getFiscalYear(date ?? new Date());
-  const rows = await withRetry(async () => {
-    const db = await getDb();
-    return db.select<{ last_number: number }[]>(
+  const db = await getDb();
+
+  const settingsRows = await withRetry(() =>
+    db.select<{ fiscal_year: string }[]>(
+      "SELECT fiscal_year FROM company_settings WHERE id = 1"
+    )
+  );
+  const overrideFy = settingsRows[0]?.fiscal_year ?? "";
+
+  let fyStart: number;
+  let fyLabel: string;
+  if (overrideFy) {
+    fyLabel = overrideFy;
+    fyStart = parseInt(overrideFy.split("-")[0], 10);
+  } else {
+    ({ fyStart, fyLabel } = getFiscalYear(date ?? new Date()));
+  }
+
+  const rows = await withRetry(() =>
+    db.select<{ last_number: number }[]>(
       "SELECT last_number FROM invoice_sequence WHERE year = ?",
       [fyStart]
-    );
-  });
+    )
+  );
   const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
   return `EXP/${next}/${fyLabel}`;
 }

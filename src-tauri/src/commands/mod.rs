@@ -3,6 +3,7 @@ pub mod auth;
 pub mod backup;
 pub mod customer;
 pub mod entry;
+pub mod gdrive;
 pub mod invoice;
 pub mod purchase_order;
 pub mod settings;

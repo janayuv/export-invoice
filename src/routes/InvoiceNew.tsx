@@ -43,6 +43,7 @@ import {
   getPurchaseOrder,
   getPurchaseOrdersByCustomerId,
   type PurchaseOrderSummary,
+  type POItem,
 } from "@/hooks/usePurchaseOrders";
 import { Combobox } from "@/components/ui/combobox";
 import { clearDraftAutosave, useDraftAutosave } from "@/hooks/useDraftAutosave";
@@ -87,6 +88,7 @@ export function InvoiceNew() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [customerPOs, setCustomerPOs] = useState<PurchaseOrderSummary[]>([]);
   const [selectedPoId, setSelectedPoId] = useState<string>("");
+  const [activePOItems, setActivePOItems] = useState<POItem[]>([]);
   const [loadingPOs, setLoadingPOs] = useState(false);
   const editFormLoadedRef = useRef(false);
   const editPickerSyncedRef = useRef(false);
@@ -391,6 +393,7 @@ export function InvoiceNew() {
   async function applyPurchaseOrder(poId: string) {
     if (!poId || poId === PO_SELECT_NONE) {
       setSelectedPoId("");
+      setActivePOItems([]);
       clearPoDerivedFields();
       // Revert PO shipping overrides to customer defaults so no stale values remain.
       const c = customers.find((cu) => String(cu.id) === selectedCustomerId);
@@ -437,11 +440,12 @@ export function InvoiceNew() {
         net_weight: current.net_weight,
         gross_weight: current.gross_weight,
         status: current.status,
-        items: mapped.items ?? current.items,
+        items: current.items,
       });
       setValue("port_of_discharge", mapped.port_of_discharge || '', { shouldDirty: true, shouldTouch: true });
       setValue("final_destination", mapped.final_destination || '', { shouldDirty: true, shouldTouch: true });
       // Force PO-level delivery override (BUSAN / SOUTH KOREA) to take priority over buyer/consignee defaults
+      setActivePOItems(po.items ?? []);
       setSelectedPoId(poId);
       toast.success("Loaded invoice fields from purchase order");
     } catch (e) {
@@ -836,7 +840,7 @@ export function InvoiceNew() {
                 </label>
               }
             >
-              <GoodsItemsTable showSaNumber={showSaNumber} />
+              <GoodsItemsTable showSaNumber={showSaNumber} poItems={activePOItems} />
             </SectionCard>
 
             {/* §6 — Packing Details */}

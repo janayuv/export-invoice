@@ -640,6 +640,16 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 35,
+            description: "add_fiscal_year_to_company_settings",
+            // Empty string = auto-derive from invoice date (April–March boundary).
+            // Non-empty (e.g. "2025-26") locks all new invoice numbers to that FY.
+            sql: r#"
+                ALTER TABLE company_settings ADD COLUMN fiscal_year TEXT NOT NULL DEFAULT '';
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
