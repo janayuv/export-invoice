@@ -143,6 +143,7 @@ mod tests {
                 lut_arn_date        TEXT DEFAULT '',
                 place               TEXT DEFAULT '',
                 signatory_name      TEXT DEFAULT '',
+                fiscal_year         TEXT DEFAULT '',
                 company_logo_base64 TEXT DEFAULT '',
                 updated_at          TEXT DEFAULT (datetime('now'))
             );
