@@ -218,11 +218,10 @@ fn drive_api_err(ctx: &str, e: ureq::Error) -> String {
                 || msg.contains("PERMISSION_DENIED")))
     {
         let _ = tokens_delete();
-        return format!(
-            "ERR_SCOPE: Insufficient Drive permissions — token cleared. \
+        return "ERR_SCOPE: Insufficient Drive permissions — token cleared. \
             1) Enable the Google Drive API in Google Cloud Console. \
             2) Click Disconnect then reconnect Google Drive."
-        );
+            .to_string();
     }
 
     format!("ERR_GDRIVE: {ctx} — HTTP {code}: {msg}")
@@ -454,7 +453,7 @@ fn run_oauth_flow(cfg: &OAuthConfig) -> Result<StoredTokens, String> {
                 "ERR_GDRIVE: timed out waiting for browser redirect ({OAUTH_TIMEOUT_SECS}s). Please retry."
             )
         })?
-        .map_err(|e| e)?;
+        ?;
 
     let request_line = {
         let mut reader = BufReader::new(&stream);
