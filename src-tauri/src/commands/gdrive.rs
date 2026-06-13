@@ -640,8 +640,13 @@ pub fn gdrive_list_backups(session: State<'_, AuthSession>) -> Result<Vec<GDrive
     drive_list_files(&access_token)
 }
 
-/// Downloads a Drive backup by file ID to a temp path, validates integrity and
-/// stages it for restore (takes effect after app restart), then deletes temp file.
+/// Downloads a Drive backup by file ID, persists it to a stable path within the
+/// application config directory, validates integrity, and stages it for restore
+/// (takes effect after app restart).
+///
+/// The staged file MUST survive until the next startup — it is NOT deleted here.
+/// `apply_pending_restore` (backup.rs) copies it to the live DB path on startup
+/// and cleans it up only after a successful copy.
 #[tauri::command]
 pub fn gdrive_download_and_stage_restore(
     session: State<'_, AuthSession>,
@@ -661,15 +666,19 @@ pub fn gdrive_download_and_stage_restore(
         .call()
         .map_err(|e| drive_api_err("drive download", e))?;
 
-    // Sanitise the filename before using it in a path.
-    let safe_name = file_name
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
-        .collect::<String>();
-    let tmp_path = std::env::temp_dir()
-        .join(format!("gdrive_restore_{safe_name}"))
+    // Persist to the app config dir — not a temp dir — so the file is still
+    // present when apply_pending_restore runs on the next startup. OS temp dirs
+    // can be cleared between sessions, which caused the original silent skip.
+    let config_dir = app_config_dir()
+        .ok_or("ERR_GDRIVE: cannot determine app config directory")?;
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("ERR_GDRIVE: create config dir: {e}"))?;
+    let staged_path = config_dir
+        .join(crate::commands::backup::STAGED_RESTORE_FILE)
         .display()
         .to_string();
+
+    eprintln!("[gdrive] staging restore from Drive file: {file_name} → {staged_path}");
 
     {
         use std::io::Read;
@@ -677,19 +686,28 @@ pub fn gdrive_download_and_stage_restore(
         resp.into_reader()
             .read_to_end(&mut bytes)
             .map_err(|e| format!("ERR_GDRIVE: download read: {e}"))?;
-        std::fs::write(&tmp_path, &bytes)
-            .map_err(|e| format!("ERR_GDRIVE: write temp file: {e}"))?;
+        std::fs::write(&staged_path, &bytes)
+            .map_err(|e| format!("ERR_GDRIVE: write staged file: {e}"))?;
     }
 
-    // Validate and stage; always clean up temp file.
-    let result = crate::commands::backup::logic_validate_and_stage_restore(
-        &tmp_path,
+    // Validate integrity and record staged_path in pending_restore.txt.
+    // Do NOT delete staged_path — apply_pending_restore needs it on next startup.
+    crate::commands::backup::logic_validate_and_stage_restore(
+        &staged_path,
         &sess.role,
         Some(sess.user_id),
         None,
-    );
-    let _ = std::fs::remove_file(&tmp_path);
-    result
+    )?;
+
+    // Confirm the staged file still exists and has content before reporting success.
+    let staged_size = std::fs::metadata(&staged_path)
+        .map_err(|e| format!("ERR_GDRIVE: staged file missing after staging: {e}"))?
+        .len();
+    if staged_size == 0 {
+        return Err("ERR_GDRIVE: staged restore file is empty after staging".to_string());
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

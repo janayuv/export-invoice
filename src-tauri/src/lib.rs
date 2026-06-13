@@ -35,14 +35,17 @@ pub fn run() {
 
     // Apply any staged restore BEFORE migrations run so the plugin pool opens the
     // restored file.  Errors are logged to stderr but never abort startup.
-    if let Some(dest) = commands::backup::apply_pending_restore() {
-        eprintln!("[startup] restore applied to: {dest}");
+    eprintln!("[startup] checking for staged restore");
+    match commands::backup::apply_pending_restore() {
+        Some(dest) => eprintln!("[startup] restore applied to: {dest}"),
+        None => eprintln!("[startup] no staged restore — starting with current database"),
     }
 
     // Take a pre-upgrade snapshot so a botched migration can be recovered.
     pre_upgrade_backup();
 
     let db_url = resolve_db_url();
+    eprintln!("[startup] active database URL: {db_url}");
 
     // Always register migrations for the default DB so behaviour is unchanged
     // when no custom DB is selected (reverting to default stays valid too).
