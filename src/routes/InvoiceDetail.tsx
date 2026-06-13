@@ -77,8 +77,11 @@ export function InvoiceDetail() {
   const handlePdf = useCallback(async () => {
     if (!invoiceWithLogo || !settings) return;
     try {
-      await exportInvoicePdf(invoiceWithLogo, settings);
-      toast.success("PDF exported");
+      // Only confirm success when a file was actually written; a false return
+      // means the user cancelled the save dialog, so stay silent.
+      const saved = await exportInvoicePdf(invoiceWithLogo, settings);
+      if (saved) toast.success("PDF exported");
+      else toast.info("PDF export cancelled");
     } catch (e) {
       toast.error(`PDF export failed: ${e}`);
     }
@@ -87,8 +90,11 @@ export function InvoiceDetail() {
   const handleExcel = useCallback(async () => {
     if (!invoiceWithLogo || !settings) return;
     try {
-      await exportInvoiceExcel(invoiceWithLogo, settings);
-      toast.success("Excel exported");
+      // Only confirm success when a file was actually written; a false return
+      // means the user cancelled the save dialog, so stay silent.
+      const saved = await exportInvoiceExcel(invoiceWithLogo, settings);
+      if (saved) toast.success("Excel exported");
+      else toast.info("Excel export cancelled");
     } catch (e) {
       toast.error(`Excel export failed: ${e}`);
     }

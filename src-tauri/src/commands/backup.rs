@@ -7,6 +7,10 @@ use crate::commands::auth::log_security_event;
 use crate::db::state::{app_config_dir, AppDb, AuthSession};
 
 const PENDING_RESTORE_FILE: &str = "pending_restore.txt";
+/// Stable file in the app config dir that holds a GDrive-downloaded backup
+/// waiting to be applied on next startup. Named distinctly so `apply_pending_restore`
+/// can clean it up after a successful copy without touching the user's own backup files.
+pub const STAGED_RESTORE_FILE: &str = "gdrive_staged_restore.db";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -230,21 +234,57 @@ pub fn logic_validate_and_stage_restore(
 pub fn apply_pending_restore() -> Option<String> {
     let dir = app_config_dir()?;
     let pending = dir.join(PENDING_RESTORE_FILE);
+
+    eprintln!("[restore] checking for pending restore: {}", pending.display());
+
     if !pending.exists() {
+        eprintln!("[restore] no pending_restore.txt — skipping");
         return None;
     }
+
     let source = std::fs::read_to_string(&pending).ok()?;
     let source = source.trim();
-    if source.is_empty() || !Path::new(source).exists() {
+    eprintln!("[restore] staged file path: {source}");
+
+    if source.is_empty() {
+        eprintln!("[restore] pending_restore.txt is empty — clearing and skipping");
         let _ = std::fs::remove_file(&pending);
         return None;
     }
+
+    if !Path::new(source).exists() {
+        eprintln!("[restore] staged file not found on disk — clearing pending and skipping");
+        let _ = std::fs::remove_file(&pending);
+        return None;
+    }
+
+    match std::fs::metadata(source) {
+        Ok(m) => eprintln!("[restore] staged file size: {} bytes", m.len()),
+        Err(e) => eprintln!("[restore] could not read staged file metadata: {e}"),
+    }
+
     let dest = crate::db::state::resolve_db_file_path();
+    eprintln!("[restore] destination DB path: {}", dest.display());
+
     if let Err(e) = std::fs::copy(source, &dest) {
         eprintln!("[restore] copy failed: {e}");
         return None;
     }
-    let _ = std::fs::remove_file(&pending);
+    eprintln!("[restore] copy succeeded");
+
+    match std::fs::remove_file(&pending) {
+        Ok(()) => eprintln!("[restore] pending_restore.txt removed"),
+        Err(e) => eprintln!("[restore] failed to remove pending_restore.txt: {e}"),
+    }
+
+    // Clean up the GDrive-staged restore file if present. This is a no-op for
+    // local-file restores where the source is the user's own backup — that file
+    // lives outside the config dir and is never touched here.
+    match std::fs::remove_file(dir.join(STAGED_RESTORE_FILE)) {
+        Ok(()) => eprintln!("[restore] gdrive_staged_restore.db removed"),
+        Err(_) => eprintln!("[restore] gdrive_staged_restore.db not present (local-file restore or already cleaned)"),
+    }
+
     Some(dest.display().to_string())
 }
 

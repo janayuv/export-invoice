@@ -9,10 +9,12 @@ import {
   rateColumnLabel,
 } from "@/lib/invoiceDocument";
 
+// Returns true when a file was written, false when the user cancelled the
+// save dialog. Genuine write errors still throw so callers can surface them.
 export async function exportInvoiceExcel(
   invoice: Invoice,
   company: CompanySettings
-): Promise<void> {
+): Promise<boolean> {
   const items = invoice.items ?? [];
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
   const totalAmt = items.reduce((sum, i) => sum + i.total_amount, 0);
@@ -185,6 +187,9 @@ export async function exportInvoiceExcel(
     title: "Save Invoice as Excel",
   });
 
-  if (!path) return;
+  // save() resolves to null when the user cancels the dialog — abort without
+  // writing and signal "not saved" to the caller.
+  if (!path) return false;
   await writeFile(path, bytes);
+  return true;
 }
