@@ -25,8 +25,10 @@ const BD2       = "#d1d5db";       // cell separators
 
 const s = StyleSheet.create({
   page:  { padding: 14, fontSize: 7.5, fontFamily: "Helvetica" },
-  // minHeight 760 = safety floor; actual content ~771pt for 1-item invoice
-  outer: { border: "1.5pt solid #000", flexDirection: "column", minHeight: 760 },
+  // flex:1 → outer fills the full A4 content height (Page is direct parent).
+  // The GOODS section then flex-grows to absorb all leftover vertical space,
+  // so the declaration footer is always pinned to the page bottom — single page.
+  outer: { border: "1.5pt solid #000", flexDirection: "column", flexGrow: 1 },
   bold:  { fontFamily: "Helvetica-Bold" },
   row:   { flexDirection: "row" },
   lbl:   { fontSize: 6.5, color: "#6b7280" },
@@ -55,9 +57,6 @@ const s = StyleSheet.create({
   thBg: { backgroundColor: GRAY_BG },
 });
 
-// A4 usable ≈ 813pt; fixed sections + borders ≈ 501pt; row cost = 13.5pt (13+0.5 border)
-// 20 rows × 13.5pt = 270pt → total ≈ 771pt → 42pt buffer for variable address heights
-const TOTAL_ITEM_ROWS = 20;
 
 interface Props {
   invoice: Invoice;
@@ -84,8 +83,6 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
   const rateW     = showSa ? "12%" : "14%";
   const amtW      = showSa ? "12%" : "14%";
   const totalLblW = showSa ? "66%" : "62%";
-
-  const padRows = Math.max(0, TOTAL_ITEM_ROWS - items.length);
 
   return (
     <Document>
@@ -197,8 +194,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
-          {/* ═══ 4. GOODS TABLE ══════════════════════════════════════════════ */}
-          <View style={s.sbB}>
+          {/* ═══ 4. GOODS TABLE (flex-grows to fill page) ════════════════════ */}
+          <View style={[s.sbB, { flexGrow: 1, flexDirection: "column" }]}>
             {/* Section banner */}
             <View style={s.navyBar}><Text style={s.navyTxt}>GOODS</Text></View>
 
@@ -237,18 +234,18 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               </View>
             ))}
 
-            {/* Empty pad rows — fixed 13pt each to reach TOTAL_ITEM_ROWS */}
-            {Array.from({ length: padRows }).map((_, idx) => (
-              <View key={`pad-${idx}`} style={[s.row, s.cbB, { minHeight: 13 }]}>
-                <TD w={srW}></TD>
-                {showSa && <TD w={saW}></TD>}
-                <TD w={partW}></TD>
-                <TD w={descW}></TD>
-                <TD w={qtyW}></TD>
-                <TD w={rateW}></TD>
-                <TD w={amtW} last></TD>
-              </View>
-            ))}
+            {/* Flexible spacer — grows to absorb all leftover height so the
+                table body always reaches the TOTAL row. Column separator lines
+                continue down the empty space for a clean ledger look. */}
+            <View style={[s.row, { flexGrow: 1 }]}>
+              <View style={{ width: srW, borderRight: `0.5pt solid ${BD2}` }} />
+              {showSa && <View style={{ width: saW, borderRight: `0.5pt solid ${BD2}` }} />}
+              <View style={{ width: partW, borderRight: `0.5pt solid ${BD2}` }} />
+              <View style={{ width: descW, borderRight: `0.5pt solid ${BD2}` }} />
+              <View style={{ width: qtyW,  borderRight: `0.5pt solid ${BD2}` }} />
+              <View style={{ width: rateW, borderRight: `0.5pt solid ${BD2}` }} />
+              <View style={{ width: amtW }} />
+            </View>
 
             {/* TOTAL row */}
             <View style={[s.row, { borderTop: `1pt solid ${BD0}`, minHeight: 16 }]}>
