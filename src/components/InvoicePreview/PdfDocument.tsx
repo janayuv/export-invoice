@@ -25,8 +25,8 @@ const BD2       = "#d1d5db";       // cell separators
 
 const s = StyleSheet.create({
   page:  { padding: 14, fontSize: 7.5, fontFamily: "Helvetica" },
-  // minHeight 780 = safety floor; row math should reach ~740-780pt naturally
-  outer: { border: "1.5pt solid #000", flexDirection: "column", minHeight: 780 },
+  // minHeight 760 = safety floor; actual content ~771pt for 1-item invoice
+  outer: { border: "1.5pt solid #000", flexDirection: "column", minHeight: 760 },
   bold:  { fontFamily: "Helvetica-Bold" },
   row:   { flexDirection: "row" },
   lbl:   { fontSize: 6.5, color: "#6b7280" },
@@ -55,9 +55,9 @@ const s = StyleSheet.create({
   thBg: { backgroundColor: GRAY_BG },
 });
 
-// A4 usable ≈ 811pt; fixed sections ≈ 410pt; 13pt/row → 30 max rows
-// 25 rows × 13pt = 325pt → total ≈ 735pt → ~5% buffer for variable content
-const TOTAL_ITEM_ROWS = 25;
+// A4 usable ≈ 813pt; fixed sections + borders ≈ 501pt; row cost = 13.5pt (13+0.5 border)
+// 20 rows × 13.5pt = 270pt → total ≈ 771pt → 42pt buffer for variable address heights
+const TOTAL_ITEM_ROWS = 20;
 
 interface Props {
   invoice: Invoice;
