@@ -16,8 +16,8 @@ import {
 } from "@/lib/invoiceDocument";
 
 const s = StyleSheet.create({
-  page: { padding: 24, fontSize: 8, fontFamily: "Helvetica" },
-  outer: { border: "1pt solid #000" },
+  page: { padding: 18, fontSize: 8, fontFamily: "Helvetica" },
+  outer: { border: "1pt solid #000", flex: 1, flexDirection: "column" },
   bold: { fontFamily: "Helvetica-Bold" },
   borderB: { borderBottom: "1pt solid #000" },
   borderR: { borderRight: "1pt solid #000" },
@@ -35,6 +35,8 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
+const MIN_ITEM_ROWS = 8;
 
 interface Props {
   invoice: Invoice;
@@ -55,6 +57,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
   const rateW = showSa ? "11%" : "13%";
   const amtW  = showSa ? "12%" : "13%";
   const totalSpanW = showSa ? "67%" : "64%";
+
+  const padRows = Math.max(0, MIN_ITEM_ROWS - items.length);
 
   return (
     <Document>
@@ -108,7 +112,6 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               {company.pan ? <Text style={{ marginTop: 1 }}>PAN: {company.pan}</Text> : null}
             </View>
             <View style={{ width: "50%" }}>
-              {/* Invoice No & Date — prominent box at top of right column */}
               <View style={[s.borderB, { padding: 4, backgroundColor: "#eef2ff" }]}>
                 <Text style={[s.label, { letterSpacing: 0.3 }]}>INVOICE NO &amp; DATE</Text>
                 <Text style={[s.bold, { fontSize: 10, marginTop: 2 }]}>{refs[0].value}</Text>
@@ -175,8 +178,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
-          {/* GOODS section */}
-          <View>
+          {/* GOODS section — flex: 1 fills remaining page height */}
+          <View style={{ flex: 1, flexDirection: "column", borderBottom: "1pt solid #000" }}>
             <Text style={s.sectionBanner}>GOODS</Text>
             <View style={[s.row, s.tableHead, s.borderB]}>
               <Th w={srW} align="center">Sr.</Th>
@@ -197,19 +200,36 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               <Th w={amtW} align="right" sub last>{rateLabel}</Th>
             </View>
 
-            {items.map((item, idx) => (
-              <View key={`g-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc" }]}>
-                <Td w={srW} align="center">{String(item.sr_no)}</Td>
-                {showSa && <Td w="10%">{item.sa_number}</Td>}
-                <Td w={partW}>{item.part_number}</Td>
-                <Td w={descW}>{item.description}</Td>
-                <Td w="10%" align="right">{fmtAmount(item.quantity, 0)}</Td>
-                <Td w={rateW} align="right">{fmtAmount(item.unit_price, 3)}</Td>
-                <Td w={amtW} align="right" last>{fmtAmount(item.total_amount)}</Td>
-              </View>
-            ))}
+            {/* Items + empty pad rows — flex: 1 fills goods section */}
+            <View style={{ flex: 1, flexDirection: "column" }}>
+              {items.map((item, idx) => (
+                <View key={`g-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", minHeight: 16 }]}>
+                  <Td w={srW} align="center">{String(item.sr_no)}</Td>
+                  {showSa && <Td w="10%">{item.sa_number}</Td>}
+                  <Td w={partW}>{item.part_number}</Td>
+                  <Td w={descW}>{item.description}</Td>
+                  <Td w="10%" align="right">{fmtAmount(item.quantity, 0)}</Td>
+                  <Td w={rateW} align="right">{fmtAmount(item.unit_price, 3)}</Td>
+                  <Td w={amtW} align="right" last>{fmtAmount(item.total_amount)}</Td>
+                </View>
+              ))}
 
-            <View style={[s.row, s.borderB, { borderTop: "1pt solid #000", backgroundColor: "#f8fafc" }]}>
+              {/* Empty pad rows — distribute remaining vertical space */}
+              {Array.from({ length: padRows }).map((_, idx) => (
+                <View key={`pad-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", flexGrow: 1 }]}>
+                  <Td w={srW}></Td>
+                  {showSa && <Td w="10%"></Td>}
+                  <Td w={partW}></Td>
+                  <Td w={descW}></Td>
+                  <Td w="10%"></Td>
+                  <Td w={rateW}></Td>
+                  <Td w={amtW} last></Td>
+                </View>
+              ))}
+            </View>
+
+            {/* TOTAL — pinned to bottom of goods section */}
+            <View style={[s.row, { borderTop: "1pt solid #000", backgroundColor: "#f8fafc" }]}>
               <Td w={totalSpanW} align="right" bold last>TOTAL</Td>
               <Td w="10%" align="right" bold>{fmtAmount(totalQty, 0)}</Td>
               <Td w={rateW}></Td>
@@ -265,7 +285,7 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
           ) : null}
 
           {/* Declaration + signature */}
-          <View style={[s.row, { padding: 4, borderTop: "1pt solid #000" }]}>
+          <View style={[s.row, { padding: 4, borderTop: "1pt solid #000", minHeight: 72 }]}>
             <View style={{ width: "58%", paddingRight: 8 }}>
               <Text style={{ fontSize: 7 }}>
                 We declare that this invoice shows the actual price of the goods{"\n"}
