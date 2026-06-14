@@ -24,7 +24,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU3RUIyNzMwNEREMDI2NjAKUldSZ0p0Qk5NQ2ZyNSthNXVEZEdzbCtzV21ObXhjK2I2Uk5WQWIrT0U4SFhFVTY2SlIrdTRqQmsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFERjE4QTEyMjM2REY2N0UKUldSKzltMGpFb3J4SFd0dHdiS0tPT1lYV2tFaW4wbUExN2FwTjY1RGEyZFBtU1R0dFJNZUJka1MK",
       "endpoints": [
         "https://github.com/janayuv/export-invoice/releases/latest/download/latest.json"
       ]
