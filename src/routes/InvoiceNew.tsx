@@ -692,7 +692,7 @@ export function InvoiceNew() {
                 <Field label="Duty Drawback" error={errors.duty_drawback?.message}>
                   <Input {...register("duty_drawback")} placeholder="ALL INDUSTRY RATE" className="text-[12px]" />
                 </Field>
-                <Field label="HS Code" error={errors.hs_code?.message}>
+                <Field label="HS Code" error={errors.hs_code?.message} required>
                   <Input {...register("hs_code")} placeholder="84148090" className="font-mono text-[12px]" />
                 </Field>
                 <Field label="LUT ARN No" error={undefined}>
@@ -772,7 +772,7 @@ export function InvoiceNew() {
                 <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
                   <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" className="text-[12px]" />
                 </Field>
-                <Field label="Incoterm (Delivery)" error={errors.incoterm?.message}>
+                <Field label="Incoterm (Delivery)" error={errors.incoterm?.message} required>
                   <Select
                     value={incoterm}
                     onValueChange={(v) => setValue("incoterm", v ?? "")}
@@ -892,15 +892,17 @@ function Field({
   label,
   children,
   error,
+  required,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string;
+  required?: boolean;
 }) {
   return (
     <div className="space-y-1">
       <Label className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
-        {label}
+        {label}{required && <span className="ml-0.5 text-destructive">*</span>}
       </Label>
       {children}
       {error && <p className="text-[11px] text-destructive">{error}</p>}
