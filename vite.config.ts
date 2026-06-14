@@ -17,7 +17,7 @@ export default defineConfig(async () => ({
     "process.env": {},
   },
   optimizeDeps: {
-    include: ["@react-pdf/renderer", "xlsx"],
+    include: ["@react-pdf/renderer", "xlsx", "exceljs"],
   },
   build: {
     target: "esnext",

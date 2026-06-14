@@ -27,7 +27,6 @@ import { type Customer, getCustomers } from "@/lib/customer";
 import { poFormSchema } from "@/lib/schemas";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditPurchaseOrderByStatus } from "@/lib/auth";
-import { useSettings } from "@/hooks/useSettings";
 import { clearDraftAutosave, useDraftAutosave } from "@/hooks/useDraftAutosave";
 
 const PO_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED"] as const;
@@ -87,7 +86,6 @@ export function PurchaseOrderNew() {
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const { currentUser, can } = useAuth();
-  const { settings } = useSettings();
 
   const [form, setForm] = useState<POFormValues>(DEFAULT_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,16 +105,6 @@ export function PurchaseOrderNew() {
       });
     }
   }, [isEdit]);
-
-  // Pre-fill delivery address from company settings
-  useEffect(() => {
-    if (!isEdit && settings && !form.delivery_address) {
-      setForm((f) => ({
-        ...f,
-        delivery_address: [settings.name, settings.address].filter(Boolean).join("\n"),
-      }));
-    }
-  }, [isEdit, settings]);
 
   // Load customers
   useEffect(() => {
