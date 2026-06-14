@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Delete, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { type User, getActiveUsers, verifyPin } from "@/lib/auth";
+import { type User, getActiveUsers, verifyPin, createUser } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 
 const AVATAR_COLORS = [
@@ -37,6 +39,7 @@ function parseLockoutDate(until: string): Date {
 export function LoginScreen() {
   const { login } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string>("");
   const [pin, setPin] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -44,12 +47,40 @@ export function LoginScreen() {
   // lockoutUntil: ISO string from Rust while account is locked
   const [lockoutUntil, setLockoutUntil] = useState<string | null>(null);
 
+  // Create-admin inline form state
+  const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+  const [adminName, setAdminName] = useState("");
+  const [adminPin, setAdminPin] = useState("");
+  const [adminConfirmPin, setAdminConfirmPin] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
   // Always points to the latest submit — avoids stale closure inside setTimeout
   const submitRef = useRef<(pinOverride?: string) => void>(() => {});
 
   useEffect(() => {
-    getActiveUsers().then(setUsers);
+    getActiveUsers().then((u) => { setUsers(u); setUsersLoaded(true); });
   }, []);
+
+  async function handleCreateAdmin() {
+    const trimmedName = adminName.trim();
+    if (!trimmedName) { toast.error("Name is required"); return; }
+    if (adminPin.length < 4) { toast.error("PIN must be at least 4 digits"); return; }
+    if (!/^\d+$/.test(adminPin)) { toast.error("PIN must be digits only"); return; }
+    if (adminPin !== adminConfirmPin) { toast.error("PINs do not match"); return; }
+    setIsCreating(true);
+    try {
+      await createUser(trimmedName, adminPin, "admin");
+      toast.success("Admin account created — signing you in");
+      const updated = await getActiveUsers();
+      setUsers(updated);
+      const created = updated.find((u) => u.name === trimmedName);
+      if (created) login(created);
+    } catch (e) {
+      toast.error(`Failed to create admin: ${e}`);
+    } finally {
+      setIsCreating(false);
+    }
+  }
 
   // Auto-clear lockout state when the expiry time passes.
   useEffect(() => {
@@ -155,7 +186,90 @@ export function LoginScreen() {
           <p className="text-[12px] text-zinc-500">Select your account and enter your PIN</p>
         </div>
 
-        {/* ── User card grid ── */}
+        {/* ── User card grid / no-user state ── */}
+        {usersLoaded && users.length === 0 ? (
+          <div className="space-y-3">
+            {!showCreateAdmin ? (
+              <div
+                className="rounded-lg px-4 py-5 text-center space-y-3"
+                style={{ background: "#09090b", border: "1px solid #27272a" }}
+              >
+                <p className="text-[13px] text-zinc-400">No user accounts found.</p>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setShowCreateAdmin(true)}
+                >
+                  Create Admin Account
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
+                  Create First Admin
+                </p>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="ca-name" className="text-[12px] text-zinc-400">Name</Label>
+                    <Input
+                      id="ca-name"
+                      placeholder="e.g. S.DINESH"
+                      value={adminName}
+                      onChange={(e) => setAdminName(e.target.value)}
+                      className="h-9 text-[13px]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ca-pin" className="text-[12px] text-zinc-400">PIN (4–6 digits)</Label>
+                    <Input
+                      id="ca-pin"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="••••"
+                      value={adminPin}
+                      onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ""))}
+                      className="h-9 text-[13px]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ca-confirm" className="text-[12px] text-zinc-400">Confirm PIN</Label>
+                    <Input
+                      id="ca-confirm"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="••••"
+                      value={adminConfirmPin}
+                      onChange={(e) => setAdminConfirmPin(e.target.value.replace(/\D/g, ""))}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateAdmin()}
+                      className="h-9 text-[13px]"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setShowCreateAdmin(false)}
+                      disabled={isCreating}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={handleCreateAdmin}
+                      disabled={isCreating}
+                    >
+                      {isCreating ? "Creating…" : "Create"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
             Select User
@@ -200,7 +314,10 @@ export function LoginScreen() {
             })}
           </div>
         </div>
+        )}
 
+        {/* ── PIN + keypad + sign-in: hidden when no users exist ── */}
+        {(!usersLoaded || users.length > 0) && (<>
         {/* ── PIN dots ── */}
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">PIN</p>
@@ -264,6 +381,7 @@ export function LoginScreen() {
         <Button className="w-full" onClick={() => submit()} disabled={!canSubmit}>
           {isVerifying ? "Verifying…" : "Sign In"}
         </Button>
+        </>)}
       </div>
     </div>
   );

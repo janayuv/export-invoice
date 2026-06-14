@@ -20,7 +20,9 @@ use std::io::{BufRead, BufReader, Write as IoWrite};
 use std::net::TcpListener;
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use aes_gcm::aead::{Aead, AeadCore, KeyInit};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use base64::{engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}, Engine as _};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use tauri::State;
@@ -42,6 +44,7 @@ const SCOPE: &str = "https://www.googleapis.com/auth/drive.file openid email";
 
 const KEYRING_SERVICE: &str = "com.exportinvoice.app";
 const KEYRING_USER: &str = "gdrive_tokens_v1";
+const KEYRING_ENCRYPT_KEY: &str = "gdrive_encrypt_key_v1";
 const OAUTH_CONFIG_FILE: &str = "gdrive_oauth.json";
 const OAUTH_TIMEOUT_SECS: u64 = 300;
 
@@ -187,6 +190,66 @@ fn tokens_delete() -> Result<(), String> {
         .map_err(|e| format!("ERR_KEYRING: {e}"))?
         .delete_credential()
         .map_err(|e| format!("ERR_KEYRING: delete failed: {e}"))
+}
+
+// ── Backup encryption (AES-256-GCM) ──────────────────────────────────────────
+//
+// A 256-bit key is generated on first use and stored in Windows Credential
+// Manager under KEYRING_ENCRYPT_KEY. Encrypted blobs are prefixed with a
+// 12-byte random nonce; the AES-GCM 16-byte auth tag is appended by the
+// cipher. Format on disk/Drive: [nonce 12B][ciphertext+tag].
+
+fn load_or_create_encryption_key() -> Result<[u8; 32], String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ENCRYPT_KEY)
+        .map_err(|e| format!("ERR_KEYRING: {e}"))?;
+
+    match entry.get_password() {
+        Ok(b64) => {
+            let bytes = STANDARD
+                .decode(b64.trim())
+                .map_err(|e| format!("ERR_GDRIVE: decode encryption key: {e}"))?;
+            if bytes.len() != 32 {
+                return Err("ERR_GDRIVE: stored encryption key has wrong length".to_string());
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            Ok(key)
+        }
+        Err(_) => {
+            let mut key = [0u8; 32];
+            OsRng.fill_bytes(&mut key);
+            entry
+                .set_password(&STANDARD.encode(key))
+                .map_err(|e| format!("ERR_KEYRING: save encryption key: {e}"))?;
+            Ok(key)
+        }
+    }
+}
+
+fn encrypt_bytes(key_bytes: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key_bytes));
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|e| format!("ERR_GDRIVE: encrypt backup: {e}"))?;
+    let mut out = Vec::with_capacity(12 + ciphertext.len());
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&ciphertext);
+    Ok(out)
+}
+
+fn decrypt_bytes(key_bytes: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 12 {
+        return Err("ERR_GDRIVE: encrypted data too short to contain nonce".to_string());
+    }
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key_bytes));
+    cipher
+        .decrypt(Nonce::from_slice(&data[..12]), &data[12..])
+        .map_err(|_| {
+            "ERR_GDRIVE: decryption failed — backup may be corrupted or was encrypted \
+             on a different machine (key mismatch)"
+                .to_string()
+        })
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -341,7 +404,7 @@ fn drive_upload_file(
     .ok();
     write!(
         &mut body,
-        "--{boundary}\r\nContent-Type: application/x-sqlite3\r\n\r\n"
+        "--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n"
     )
     .ok();
     body.extend_from_slice(file_bytes);
@@ -609,7 +672,7 @@ pub fn gdrive_backup_and_upload(
     let sha256 = info.sha256.clone();
     let size_bytes = info.size_bytes;
 
-    let file_bytes = std::fs::read(&tmp_path)
+    let raw_bytes = std::fs::read(&tmp_path)
         .map_err(|e| format!("ERR_GDRIVE: read temp backup: {e}"))?;
     let _ = std::fs::remove_file(&tmp_path);
 
@@ -619,6 +682,10 @@ pub fn gdrive_backup_and_upload(
             info.integrity_status
         ));
     }
+
+    let enc_key = load_or_create_encryption_key()?;
+    let file_bytes = encrypt_bytes(&enc_key, &raw_bytes)?;
+    let file_name = format!("{file_name}.enc");
 
     let access_token = get_access_token()?;
     let (file_id, web_view_link) = drive_upload_file(&access_token, &file_bytes, &file_name)?;
@@ -682,10 +749,16 @@ pub fn gdrive_download_and_stage_restore(
 
     {
         use std::io::Read;
-        let mut bytes = Vec::new();
+        let mut raw = Vec::new();
         resp.into_reader()
-            .read_to_end(&mut bytes)
+            .read_to_end(&mut raw)
             .map_err(|e| format!("ERR_GDRIVE: download read: {e}"))?;
+        let bytes = if file_name.ends_with(".enc") {
+            let enc_key = load_or_create_encryption_key()?;
+            decrypt_bytes(&enc_key, &raw)?
+        } else {
+            raw
+        };
         std::fs::write(&staged_path, &bytes)
             .map_err(|e| format!("ERR_GDRIVE: write staged file: {e}"))?;
     }

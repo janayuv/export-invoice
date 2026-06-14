@@ -28,6 +28,10 @@ fn pre_upgrade_backup() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Record any panic to the app log before anything else runs. Best-effort;
+    // chains the default hook so stderr output is preserved.
+    logging::install_panic_hook();
+
     // Logging init is best-effort and must not block or abort startup.
     std::thread::spawn(|| {
         let _ = logging::init_logging();

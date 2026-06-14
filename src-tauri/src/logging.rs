@@ -82,6 +82,43 @@ pub fn init_logging() -> bool {
     false
 }
 
+/// Installs a process-wide panic hook that records panics to the app log.
+///
+/// Best-effort and never itself panics: it logs through `tracing` (which reaches
+/// the log file + stderr once the subscriber is active) and *also* appends
+/// directly to `app.log` as a fallback for panics that occur before tracing is
+/// initialized. The previous hook is chained so default stderr output is kept.
+pub fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload = info.payload();
+        let msg = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-string panic payload".to_string());
+
+        // Structured log: reaches file + stderr when the subscriber is active.
+        tracing::error!(location = %location, payload = %msg, "panic");
+
+        // Direct append fallback in case tracing is not yet initialized.
+        if let Some(path) = app_log_file() {
+            if let Some(mut file) = open_log_append(&path) {
+                use std::io::Write;
+                let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let _ = writeln!(file, "{ts} PANIC at {location}: {msg}");
+            }
+        }
+
+        // Preserve default hook behaviour (stderr print / configured abort).
+        previous(info);
+    }));
+}
+
 /// Read the last `limit` non-empty lines from the app log (newest last).
 pub fn tail_log_lines(limit: usize) -> Result<Vec<String>, String> {
     let path = app_log_file().ok_or_else(|| "ERR_LOG: log file path unavailable".to_string())?;

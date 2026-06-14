@@ -148,16 +148,14 @@ impl AppDb {
                      id           INTEGER PRIMARY KEY AUTOINCREMENT,
                      user_id      INTEGER NULL,
                      event_type   TEXT    NOT NULL
-                                      CHECK(event_type IN (
-                                          'failed_attempt','locked','unlocked',
-                                          'pin_changed','login_success'
-                                      )),
+                                          CHECK(event_type IN (
+                                              'failed_attempt','locked','unlocked',
+                                              'pin_changed','login_success'
+                                          )),
                      occurred_at  TEXT    NOT NULL DEFAULT (datetime('now')),
                      ip_or_source TEXT    DEFAULT 'tauri-main-window',
                      details_json TEXT    NOT NULL DEFAULT '{}',
-                     created_by   INTEGER NULL,
-                     prev_hash    TEXT    NOT NULL DEFAULT '',
-                     entry_hash   TEXT    NOT NULL DEFAULT ''
+                     created_by   INTEGER NULL
                  );
                  CREATE INDEX IF NOT EXISTS idx_auth_audit_user_time
                      ON auth_audit_log(user_id, occurred_at DESC);

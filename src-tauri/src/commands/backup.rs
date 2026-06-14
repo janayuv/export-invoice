@@ -266,6 +266,24 @@ pub fn apply_pending_restore() -> Option<String> {
     let dest = crate::db::state::resolve_db_file_path();
     eprintln!("[restore] destination DB path: {}", dest.display());
 
+    // Remove stale WAL/SHM files before overwriting the DB.  If these files
+    // exist from a previous session and we replace the DB file without removing
+    // them, SQLite will try to apply the old WAL to the new database and
+    // produce SQLITE_CORRUPT (error 11 — "disk image malformed").
+    for suffix in &["-wal", "-shm"] {
+        let side = dest.with_file_name(format!(
+            "{}{}",
+            dest.file_name().unwrap_or_default().to_string_lossy(),
+            suffix
+        ));
+        if side.exists() {
+            match std::fs::remove_file(&side) {
+                Ok(()) => eprintln!("[restore] removed stale {suffix} file: {}", side.display()),
+                Err(e) => eprintln!("[restore] could not remove {suffix} file: {e}"),
+            }
+        }
+    }
+
     if let Err(e) = std::fs::copy(source, &dest) {
         eprintln!("[restore] copy failed: {e}");
         return None;

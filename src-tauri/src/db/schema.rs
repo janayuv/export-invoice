@@ -742,9 +742,18 @@ pub fn sync_pending_plugin_migrations(conn: &rusqlite::Connection) -> Result<(),
     if applied_max < target_max {
         for m in get_migrations() {
             if m.version > applied_max {
-                conn.execute_batch(m.sql).map_err(|e| {
-                    format!("Migration v{} ({}): {e}", m.version, m.description)
-                })?;
+                if let Err(e) = conn.execute_batch(m.sql) {
+                    let msg = e.to_string();
+                    // "duplicate column name" means a prior safety-net DDL already added
+                    // the column — the migration's intent is satisfied, treat as success.
+                    if !msg.contains("duplicate column name") {
+                        return Err(format!("Migration v{} ({}): {e}", m.version, m.description));
+                    }
+                    eprintln!(
+                        "[migration] v{} ({}) column already present — marking applied",
+                        m.version, m.description
+                    );
+                }
                 let _ = conn.execute(
                     "INSERT OR IGNORE INTO _sqlx_migrations \
                      (version, description, success, checksum, execution_time) \
