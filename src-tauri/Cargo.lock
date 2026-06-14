@@ -1032,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "export-invoice"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "aes-gcm",
  "argon2",
