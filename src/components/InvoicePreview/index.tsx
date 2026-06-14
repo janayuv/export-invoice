@@ -315,6 +315,21 @@ export function InvoicePreview({ invoice, company }: Props) {
         <span>Gross Weight: {invoice.gross_weight} Kgs</span>
       </div>
 
+      {/* ── 8b. Additional notes ── */}
+      {invoice.notes && (
+        <div
+          style={{
+            padding: "5px 9px",
+            fontSize: "8pt",
+            borderBottom: C.border,
+            whiteSpace: "pre-line",
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>NOTES: </span>
+          {invoice.notes}
+        </div>
+      )}
+
       {/* ── 9. Declaration + signatory footer ── */}
       <div style={{ display: "flex", minHeight: 90 }}>
         <div

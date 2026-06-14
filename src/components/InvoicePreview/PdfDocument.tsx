@@ -254,6 +254,16 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
+          {/* Additional notes */}
+          {invoice.notes ? (
+            <View style={{ padding: 4, borderTop: "1pt solid #000" }}>
+              <Text style={{ fontSize: 7, whiteSpace: "pre" }}>
+                <Text style={s.bold}>NOTES: </Text>
+                {invoice.notes}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Declaration + signature */}
           <View style={[s.row, { padding: 4, borderTop: "1pt solid #000" }]}>
             <View style={{ width: "58%", paddingRight: 8 }}>
