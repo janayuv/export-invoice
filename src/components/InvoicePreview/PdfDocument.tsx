@@ -197,8 +197,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
-          {/* ═══ 4. GOODS TABLE (flex-grows to fill page) ════════════════════ */}
-          <View style={[s.sbB, { flexGrow: 1, flexDirection: "column" }]}>
+          {/* ═══ 4. GOODS TABLE (compact — modest empty area) ════════════════ */}
+          <View style={[s.sbB, { flexDirection: "column" }]}>
             {/* Section banner */}
             <View style={s.navyBar}><Text style={s.navyTxt}>GOODS</Text></View>
 
@@ -237,10 +237,10 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               </View>
             ))}
 
-            {/* Flexible spacer — grows to absorb all leftover height so the
-                table body always reaches the TOTAL row. Column separator lines
-                continue down the empty space for a clean ledger look. */}
-            <View style={[s.row, { flexGrow: 1 }]}>
+            {/* Small fixed spacer — keeps a tidy empty band under the items so
+                the goods table looks complete without dominating the page.
+                The declaration block below flex-grows to take the rest. */}
+            <View style={[s.row, { minHeight: 40 }]}>
               <View style={{ width: srW, borderRight: `0.5pt solid ${BD2}` }} />
               {showSa && <View style={{ width: saW, borderRight: `0.5pt solid ${BD2}` }} />}
               <View style={{ width: partW, borderRight: `0.5pt solid ${BD2}` }} />
@@ -306,50 +306,49 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
 
           {/* ═══ 8. NOTES (optional) ═════════════════════════════════════════ */}
           {invoice.notes ? (
-            <View style={[s.sbB, { padding: 3 }]}>
-              <Text style={{ fontSize: 7 }}>
+            <View style={[s.sbB, { paddingVertical: 6, paddingHorizontal: 5 }]}>
+              <Text style={{ fontSize: 8.5, lineHeight: 1.4 }}>
                 <Text style={s.bold}>NOTES: </Text>
                 {invoice.notes}
               </Text>
             </View>
           ) : null}
 
-          {/* ═══ 9. DECLARATION + SIGNATURE ══════════════════════════════════ */}
-          <View style={[s.row, { padding: 5, minHeight: 58 }]}>
+          {/* ═══ 9. DECLARATION + SIGNATURE (flex-grows to fill page) ═════════ */}
+          <View style={[s.row, { padding: 6, flexGrow: 1, minHeight: 90 }]}>
             {/* Declaration text */}
-            <View style={{ width: "60%", paddingRight: 8 }}>
-              <Text style={{ fontSize: 7, color: "#374151" }}>
+            <View style={{ width: "58%", paddingRight: 8 }}>
+              <Text style={{ fontSize: 8, color: "#374151", lineHeight: 1.4 }}>
                 We declare that this invoice shows the actual price of the goods
                 described and that all particulars are true and correct.
               </Text>
               {company.lut_arn_no ? (
-                <Text style={{ fontSize: 7, marginTop: 3, color: "#374151" }}>
+                <Text style={{ fontSize: 8, marginTop: 5, color: "#374151" }}>
                   Export under LUT ARN: {company.lut_arn_no}
                   {company.lut_arn_date
                     ? ` dated ${formatInvoiceDisplayDate(company.lut_arn_date)}`
                     : ""}
                 </Text>
               ) : null}
-              <View style={{ marginTop: 6 }}>
-                <Text style={{ fontSize: 7 }}>Place : {company.place}</Text>
-                <Text style={{ fontSize: 7, marginTop: 1 }}>
+              <View style={{ marginTop: 10 }}>
+                <Text style={{ fontSize: 8 }}>Place : {company.place}</Text>
+                <Text style={{ fontSize: 8, marginTop: 2 }}>
                   Date : {formatInvoiceDisplayDate(invoice.invoice_date)}
                 </Text>
               </View>
             </View>
             {/* Signatory */}
-            <View style={{ width: "40%", alignItems: "flex-end" }}>
-              <Text style={[s.bold, { color: NAVY, fontSize: 8 }]}>For {company.name}</Text>
+            <View style={{ width: "42%", alignItems: "flex-end", justifyContent: "space-between" }}>
+              <Text style={[s.bold, { color: NAVY, fontSize: 9 }]}>For {company.name}</Text>
               <View style={{
-                marginTop: 22,
                 borderTop: `0.75pt solid ${BD1}`,
-                paddingTop: 2,
-                minWidth: 130,
+                paddingTop: 3,
+                minWidth: 150,
                 alignItems: "center",
               }}>
-                <Text style={{ fontSize: 7 }}>Authorised Signatory</Text>
+                <Text style={[s.bold, { fontSize: 8 }]}>Authorised Signatory</Text>
                 {company.signatory_name ? (
-                  <Text style={{ fontSize: 6.5, color: "#374151", marginTop: 1 }}>
+                  <Text style={{ fontSize: 7.5, color: "#374151", marginTop: 1 }}>
                     ({company.signatory_name})
                   </Text>
                 ) : null}
