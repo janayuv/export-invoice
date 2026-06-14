@@ -29,8 +29,9 @@ const BD2       = "#d1d5db";       // cell separators
 const s = StyleSheet.create({
   page:  { padding: 14, fontSize: 7.5, fontFamily: "Helvetica" },
   // flex:1 → outer fills the full A4 content height (Page is direct parent).
-  // The GOODS section then flex-grows to absorb all leftover vertical space,
-  // so the declaration footer is always pinned to the page bottom — single page.
+  // The GOODS table then flex-grows (its inner spacer absorbs all leftover
+  // vertical space), so the goods area dominates the page and the declaration
+  // footer stays compact and pinned just below it — single page, no big gap.
   outer: { border: "1.5pt solid #000", flexDirection: "column", flexGrow: 1 },
   bold:  { fontFamily: "Helvetica-Bold" },
   row:   { flexDirection: "row" },
@@ -180,7 +181,18 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             <View style={{ width: "50%", flexDirection: "column" }}>
               <View style={[s.mbB, { padding: 3, minHeight: 28 }]}>
                 <Text style={s.lbl}>BUYER (IF OTHER THAN CONSIGNEE)</Text>
-                <Text style={{ marginTop: 1.5 }}>{invoice.buyer_if_other}</Text>
+                {(() => {
+                  const lines = (invoice.buyer_if_other ?? "").split("\n");
+                  const [name, ...rest] = lines;
+                  return (
+                    <>
+                      <Text style={[s.bold, { marginTop: 1.5, fontSize: 7.5 }]}>{name}</Text>
+                      {rest.length ? (
+                        <Text style={{ marginTop: 1.5 }}>{rest.join("\n")}</Text>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </View>
               <View style={[s.mbB, { padding: 3 }]}>
                 <Text style={s.lbl}>COUNTRY OF ORIGIN OF GOODS</Text>
@@ -197,8 +209,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
-          {/* ═══ 4. GOODS TABLE (compact — modest empty area) ════════════════ */}
-          <View style={[s.sbB, { flexDirection: "column" }]}>
+          {/* ═══ 4. GOODS TABLE (flex-grows to fill the page) ════════════════ */}
+          <View style={[s.sbB, { flexDirection: "column", flexGrow: 1 }]}>
             {/* Section banner */}
             <View style={s.navyBar}><Text style={s.navyTxt}>GOODS</Text></View>
 
@@ -237,10 +249,10 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               </View>
             ))}
 
-            {/* Small fixed spacer — keeps a tidy empty band under the items so
-                the goods table looks complete without dominating the page.
-                The declaration block below flex-grows to take the rest. */}
-            <View style={[s.row, { minHeight: 40 }]}>
+            {/* Flex spacer — grows to absorb all leftover page height so the
+                goods table fills the sheet and the TOTAL row + footer below sit
+                tight against the bottom (no large empty band lower down). */}
+            <View style={[s.row, { flexGrow: 1, minHeight: 40 }]}>
               <View style={{ width: srW, borderRight: `0.5pt solid ${BD2}` }} />
               {showSa && <View style={{ width: saW, borderRight: `0.5pt solid ${BD2}` }} />}
               <View style={{ width: partW, borderRight: `0.5pt solid ${BD2}` }} />
@@ -314,8 +326,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           ) : null}
 
-          {/* ═══ 9. DECLARATION + SIGNATURE (flex-grows to fill page) ═════════ */}
-          <View style={[s.row, { padding: 6, flexGrow: 1, minHeight: 90 }]}>
+          {/* ═══ 9. DECLARATION + SIGNATURE (compact — pinned below goods) ════ */}
+          <View style={[s.row, { padding: 6, minHeight: 86 }]}>
             {/* Declaration text */}
             <View style={{ width: "58%", paddingRight: 8 }}>
               <Text style={{ fontSize: 8, color: "#374151", lineHeight: 1.4 }}>
@@ -343,7 +355,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               <View style={{
                 borderTop: `0.75pt solid ${BD1}`,
                 paddingTop: 3,
-                minWidth: 150,
+                minWidth: 170,
+                marginTop: 36,
                 alignItems: "center",
               }}>
                 <Text style={[s.bold, { fontSize: 8 }]}>Authorised Signatory</Text>
