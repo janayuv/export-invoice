@@ -17,7 +17,8 @@ import {
 
 const s = StyleSheet.create({
   page: { padding: 18, fontSize: 8, fontFamily: "Helvetica" },
-  outer: { border: "1pt solid #000", flex: 1, flexDirection: "column" },
+  // minHeight: 760 is a safety floor; fixed row math should reach ~790pt naturally
+  outer: { border: "1pt solid #000", flexDirection: "column", minHeight: 760 },
   bold: { fontFamily: "Helvetica-Bold" },
   borderB: { borderBottom: "1pt solid #000" },
   borderR: { borderRight: "1pt solid #000" },
@@ -36,7 +37,11 @@ const s = StyleSheet.create({
   },
 });
 
-const MIN_ITEM_ROWS = 8;
+// A4 usable height (841.89 - 36 padding) ≈ 806pt
+// Fixed sections (header + exporter + consignee + packing + footer) ≈ 438pt
+// Remaining for item rows: 806 - 438 = 368pt  @ 16pt/row → 23 rows
+// Using 22 to leave a small margin
+const TOTAL_ITEM_ROWS = 22;
 
 interface Props {
   invoice: Invoice;
@@ -58,13 +63,13 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
   const amtW  = showSa ? "12%" : "13%";
   const totalSpanW = showSa ? "67%" : "64%";
 
-  const padRows = Math.max(0, MIN_ITEM_ROWS - items.length);
+  const padRows = Math.max(0, TOTAL_ITEM_ROWS - items.length);
 
   return (
     <Document>
       <Page size="A4" style={s.page}>
         <View style={s.outer}>
-          {/* Single header row: Logo | Title | BY SEA */}
+          {/* Header: Logo | Title | Transport mode */}
           <View style={[s.row, s.borderB, { alignItems: "stretch" }]}>
             <View
               style={{
@@ -178,8 +183,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             </View>
           </View>
 
-          {/* GOODS section — flex: 1 fills remaining page height */}
-          <View style={{ flex: 1, flexDirection: "column", borderBottom: "1pt solid #000" }}>
+          {/* GOODS section */}
+          <View style={[s.borderB]}>
             <Text style={s.sectionBanner}>GOODS</Text>
             <View style={[s.row, s.tableHead, s.borderB]}>
               <Th w={srW} align="center">Sr.</Th>
@@ -200,35 +205,33 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
               <Th w={amtW} align="right" sub last>{rateLabel}</Th>
             </View>
 
-            {/* Items + empty pad rows — flex: 1 fills goods section */}
-            <View style={{ flex: 1, flexDirection: "column" }}>
-              {items.map((item, idx) => (
-                <View key={`g-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", minHeight: 16 }]}>
-                  <Td w={srW} align="center">{String(item.sr_no)}</Td>
-                  {showSa && <Td w="10%">{item.sa_number}</Td>}
-                  <Td w={partW}>{item.part_number}</Td>
-                  <Td w={descW}>{item.description}</Td>
-                  <Td w="10%" align="right">{fmtAmount(item.quantity, 0)}</Td>
-                  <Td w={rateW} align="right">{fmtAmount(item.unit_price, 3)}</Td>
-                  <Td w={amtW} align="right" last>{fmtAmount(item.total_amount)}</Td>
-                </View>
-              ))}
+            {/* Actual item rows */}
+            {items.map((item, idx) => (
+              <View key={`g-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", minHeight: 16 }]}>
+                <Td w={srW} align="center">{String(item.sr_no)}</Td>
+                {showSa && <Td w="10%">{item.sa_number}</Td>}
+                <Td w={partW}>{item.part_number}</Td>
+                <Td w={descW}>{item.description}</Td>
+                <Td w="10%" align="right">{fmtAmount(item.quantity, 0)}</Td>
+                <Td w={rateW} align="right">{fmtAmount(item.unit_price, 3)}</Td>
+                <Td w={amtW} align="right" last>{fmtAmount(item.total_amount)}</Td>
+              </View>
+            ))}
 
-              {/* Empty pad rows — distribute remaining vertical space */}
-              {Array.from({ length: padRows }).map((_, idx) => (
-                <View key={`pad-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", flexGrow: 1 }]}>
-                  <Td w={srW}></Td>
-                  {showSa && <Td w="10%"></Td>}
-                  <Td w={partW}></Td>
-                  <Td w={descW}></Td>
-                  <Td w="10%"></Td>
-                  <Td w={rateW}></Td>
-                  <Td w={amtW} last></Td>
-                </View>
-              ))}
-            </View>
+            {/* Empty pad rows — fixed 16pt each to fill A4 height */}
+            {Array.from({ length: padRows }).map((_, idx) => (
+              <View key={`pad-${idx}`} style={[s.row, { borderBottom: "0.5pt solid #ccc", minHeight: 16 }]}>
+                <Td w={srW}></Td>
+                {showSa && <Td w="10%"></Td>}
+                <Td w={partW}></Td>
+                <Td w={descW}></Td>
+                <Td w="10%"></Td>
+                <Td w={rateW}></Td>
+                <Td w={amtW} last></Td>
+              </View>
+            ))}
 
-            {/* TOTAL — pinned to bottom of goods section */}
+            {/* TOTAL */}
             <View style={[s.row, { borderTop: "1pt solid #000", backgroundColor: "#f8fafc" }]}>
               <Td w={totalSpanW} align="right" bold last>TOTAL</Td>
               <Td w="10%" align="right" bold>{fmtAmount(totalQty, 0)}</Td>
