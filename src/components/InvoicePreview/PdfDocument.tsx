@@ -16,9 +16,12 @@ import {
 } from "@/lib/invoiceDocument";
 
 // ── Design tokens ────────────────────────────────────────────────────────────
-const NAVY      = "#0f2d52";
-const NAVY_LITE = "#eff6ff";
-const GRAY_BG   = "#f8fafc";
+// BW-friendly palette: all accents are black text on light-gray fills so the
+// document stays legible on black-and-white printers (no dark ink blocks).
+const NAVY      = "#000000";   // accent text (kept name to limit churn)
+const NAVY_LITE = "#f1f1f1";   // light fill for highlighted boxes
+const GRAY_BG   = "#f3f4f6";
+const BANNER_BG = "#e5e7eb";   // section banners (GOODS / PACKING LIST)
 const BD0       = "#000000";       // section borders
 const BD1       = "#4b5563";       // mid borders
 const BD2       = "#d1d5db";       // cell separators
@@ -43,14 +46,14 @@ const s = StyleSheet.create({
   cbR:  { borderRight:  `0.5pt solid ${BD2}` },
 
   navyBar: {
-    backgroundColor: NAVY,
+    backgroundColor: BANNER_BG,
     paddingVertical: 2.5,
     paddingHorizontal: 4,
-    borderBottom: `0.75pt solid ${BD1}`,
+    borderBottom: `0.75pt solid ${BD0}`,
   },
   navyTxt: {
     fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
+    color: "#000000",
     fontSize: 7.5,
     letterSpacing: 0.6,
   },
@@ -112,9 +115,9 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
             <View style={{
               width: 68, borderLeft: `1pt solid ${BD0}`,
               alignItems: "center", justifyContent: "center",
-              padding: 3, backgroundColor: NAVY,
+              padding: 3, backgroundColor: BANNER_BG,
             }}>
-              <Text style={[s.bold, { fontSize: 8.5, color: "#ffffff" }]}>
+              <Text style={[s.bold, { fontSize: 8.5, color: "#000000" }]}>
                 {invoice.transport_mode}
               </Text>
             </View>
@@ -256,8 +259,8 @@ export function InvoicePdfDocument({ invoice, company }: Props) {
                 <Text style={s.bold}>{fmtAmount(totalQty, 0)}</Text>
               </View>
               <View style={{ width: rateW, borderRight: `0.5pt solid ${BD2}` }} />
-              <View style={{ width: amtW, padding: 3, alignItems: "flex-end", backgroundColor: NAVY }}>
-                <Text style={[s.bold, { fontSize: 9, color: "#ffffff" }]}>{fmtAmount(totalAmt)}</Text>
+              <View style={{ width: amtW, padding: 3, alignItems: "flex-end", backgroundColor: BANNER_BG }}>
+                <Text style={[s.bold, { fontSize: 9, color: "#000000" }]}>{fmtAmount(totalAmt)}</Text>
               </View>
             </View>
           </View>
