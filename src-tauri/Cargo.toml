@@ -1,6 +1,6 @@
 [package]
 name = "export-invoice"
-version = "1.1.1"
+version = "1.1.2"
 description = "Offline invoice, purchase order, and entry management for Indian exporters"
 authors = ["janayuv <jana.acc@gmail.com>"]
 edition = "2021"
