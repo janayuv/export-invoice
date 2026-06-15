@@ -348,6 +348,7 @@ pub fn load_role_permissions(conn: &Connection, role: &str) -> Vec<String> {
             "view_invoices".into(),
             "export_invoice".into(),
             "create_invoice".into(),
+            "create_purchase_order".into(),
             "edit_invoice".into(),
             "edit_final_invoice".into(),
             "edit_confirmed_po".into(),
@@ -1143,6 +1144,7 @@ pub(crate) mod tests {
         // Do not create role_permissions table — admin must not query it.
         let perms = super::load_role_permissions(&conn, "admin");
         assert!(perms.contains(&"create_invoice".to_string()));
+        assert!(perms.contains(&"create_purchase_order".to_string()));
         assert!(perms.contains(&"manage_users".to_string()));
         assert!(perms.contains(&"finalize_invoice".to_string()));
     }
