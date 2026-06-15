@@ -28,6 +28,16 @@ dist
 dist-ssr
 *.local
 
+# Tauri updater signing keys — PRIVATE, never commit
+myapp.key
+myapp.key.pub
+
+# npm cache
+.npm-cache/
+
+# Test coverage output
+coverage/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

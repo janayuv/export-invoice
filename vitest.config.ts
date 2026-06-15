@@ -5,6 +5,11 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      exclude: ["node_modules/", "dist/", "src/**/__tests__/", "**/*.config.*"],
+    },
   },
   resolve: {
     alias: {

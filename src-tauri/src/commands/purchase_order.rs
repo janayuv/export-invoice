@@ -113,10 +113,10 @@ pub fn logic_create_purchase_order(
     permissions: &[String],
     session_user_id: Option<i64>,
 ) -> Result<i64, String> {
-    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_invoice") {
+    if acting_role != "admin" && !permissions.iter().any(|p| p == "create_purchase_order") {
         log_security_event(conn, "create_purchase_order", session_user_id,
-            "ERR_PERMISSION: create_invoice not granted");
-        return Err("ERR_PERMISSION: create_invoice not granted".into());
+            "ERR_PERMISSION: create_purchase_order not granted");
+        return Err("ERR_PERMISSION: create_purchase_order not granted".into());
     }
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -611,7 +611,15 @@ mod tests {
     #[test]
     fn create_allowed_for_operator() {
         let conn = create_test_db();
-        logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", &["create_invoice".to_string()], None).unwrap();
+        logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", &["create_purchase_order".to_string()], None).unwrap();
+    }
+
+    #[test]
+    fn create_denied_for_operator_with_only_create_invoice() {
+        // PO creation no longer rides on create_invoice; it needs create_purchase_order.
+        let conn = create_test_db();
+        let err = logic_create_purchase_order(&conn, &minimal_payload(), None, "operator", &["create_invoice".to_string()], None).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION:"), "got: {err}");
     }
 
     #[test]

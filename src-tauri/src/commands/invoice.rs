@@ -878,7 +878,7 @@ mod tests {
         assert_eq!(sa_before, "SA-42");
 
         let mut p = minimal_payload("draft");
-        p.invoice_number = format!("EXP/1/2025-26"); // keep same invoice number
+        p.invoice_number = "EXP/1/2025-26".to_string(); // keep same invoice number
         p.items[0].sa_number = "SA-99".to_string();
         logic_update_invoice(&conn, id, &p, 1, "admin", &[], None).unwrap();
 

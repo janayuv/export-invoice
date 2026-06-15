@@ -43,6 +43,14 @@ webbrowser = "1"
 [dev-dependencies]
 tempfile = "3"
 
+# Optimize release binaries: smaller size + faster runtime. LTO and a single
+# codegen unit trade build time for a tighter binary; strip removes symbols.
+# (No panic=abort — Tauri relies on unwinding to turn command panics into errors.)
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 # Lint gates. Both are warn-by-default in rustc; declaring them here documents
 # intent and keeps them enforced under CI's `cargo clippy -- -D warnings`.
 [lints.rust]

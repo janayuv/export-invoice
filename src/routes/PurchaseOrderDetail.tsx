@@ -176,7 +176,7 @@ export function PurchaseOrderDetail() {
               <XCircle size={13} className="mr-1.5" /> Close PO
             </Button>
           )}
-          {can("create_invoice") && (
+          {can("create_purchase_order") && (
             <Button variant="outline" size="sm" onClick={handleDuplicate}>
               <Copy size={13} className="mr-1.5" /> Duplicate
             </Button>

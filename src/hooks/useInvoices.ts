@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
+import { safeJsonParse } from "@/lib/utils";
 import type { Invoice, InvoiceItem, InvoiceFormValues, PackingListItem } from "@/lib/types";
 
 function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
@@ -82,9 +83,7 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
   });
   if (rows.length === 0) return null;
   const invoice = rows[0];
-  invoice.packing_list = JSON.parse(
-    (invoice.packing_list as unknown as string) || "[]"
-  ) as PackingListItem[];
+  invoice.packing_list = safeJsonParse<PackingListItem[]>(invoice.packing_list, []);
   const items = await withRetry(async () => {
     const db = await getDb();
     return db.select<InvoiceItem[]>(

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
+import { safeJsonParse } from "@/lib/utils";
 import type { Entry, EntryFormValues, EntryItem } from "@/lib/types";
 
 /** List row for the Entry table. */
@@ -65,9 +66,7 @@ export async function getEntry(id: number): Promise<Entry | null> {
   });
   if (rows.length === 0) return null;
   const entry = rows[0];
-  entry.items = JSON.parse(
-    (entry.items as unknown as string) || "[]"
-  ) as EntryItem[];
+  entry.items = safeJsonParse<EntryItem[]>(entry.items, []);
   return entry;
 }
 
