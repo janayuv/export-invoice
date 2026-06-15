@@ -504,18 +504,19 @@ pub fn admin_browse_table(
             return Err(format!("Unknown table: {table_name}"));
         }
 
+        // table_name is already confirmed to exist in sqlite_master above; the
+        // identifier quoting here is defensive belt-and-suspenders. Escape once.
+        let quoted = table_name.replace('"', "\"\"");
+
         let total: i64 = conn
             .query_row(
-                &format!("SELECT COUNT(*) FROM \"{}\"", table_name.replace('"', "\"\"")),
+                &format!("SELECT COUNT(*) FROM \"{quoted}\""),
                 [],
                 |r| r.get(0),
             )
             .map_err(|e| e.to_string())?;
 
-        let sql = format!(
-            "SELECT * FROM \"{}\" LIMIT ?1 OFFSET ?2",
-            table_name.replace('"', "\"\"")
-        );
+        let sql = format!("SELECT * FROM \"{quoted}\" LIMIT ?1 OFFSET ?2");
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let col_count = stmt.column_count();
         let columns: Vec<String> = (0..col_count)
