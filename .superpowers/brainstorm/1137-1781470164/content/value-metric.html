@@ -1,0 +1,54 @@
+<h2>Export Value — How to Handle Multiple Currencies?</h2>
+<p class="subtitle">Invoices use USD, EUR, GBP, etc. Which display makes sense for your business?</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Per-Currency Breakdown</h3>
+      <p>Show each currency separately. No conversion. Always accurate.</p>
+      <div style="margin-top:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px;font-family:sans-serif;">
+        <div style="font-size:9px;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">This Month's Value</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;">
+          <div><span style="font-size:14px;font-weight:800;color:#0c4a6e;">$42,500</span> <span style="font-size:8px;color:#64748b;">USD</span></div>
+          <div><span style="font-size:14px;font-weight:800;color:#0c4a6e;">€18,300</span> <span style="font-size:8px;color:#64748b;">EUR</span></div>
+          <div><span style="font-size:14px;font-weight:800;color:#0c4a6e;">£9,100</span> <span style="font-size:8px;color:#64748b;">GBP</span></div>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280;">Best if you track P&L per currency. No exchange rate needed. Slightly more complex KPI card.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Single Total (convert to USD)</h3>
+      <p>Convert all currencies to USD at a fixed rate you set. One clean number with a trend arrow.</p>
+      <div style="margin-top:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px;font-family:sans-serif;">
+        <div style="font-size:9px;color:#166534;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Export Value — June</div>
+        <div style="font-size:22px;font-weight:900;color:#15803d;">$84,200</div>
+        <div style="font-size:8px;color:#16a34a;margin-top:2px;">▲ +18% vs May &nbsp;·&nbsp; ~USD equiv.</div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280;">Cleanest single KPI. Requires exchange rates in Settings. Rate changes affect historical comparisons.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Skip Value — Counts Only</h3>
+      <p>Keep dashboard count-based. Use Reports tab for financial analysis. Avoids currency problem entirely.</p>
+      <div style="margin-top:10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px;font-family:sans-serif;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          <div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:#111;">48</div><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;">Total</div></div>
+          <div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:#6366f1;">7</div><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;">Month</div></div>
+          <div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:#f59e0b;">3</div><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;">Draft</div></div>
+          <div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:#10b981;">45</div><div style="font-size:8px;color:#9ca3af;text-transform:uppercase;">Final</div></div>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280;">Simplest — no DB changes. Works well if you use Reports for financials. Dashboard stays operational-focused.</p>
+    </div>
+  </div>
+
+</div>
