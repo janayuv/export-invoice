@@ -21,6 +21,16 @@ export default defineConfig(async () => ({
   },
   build: {
     target: "esnext",
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "pdf-renderer": ["@react-pdf/renderer"],
+          "excel-libs": ["xlsx", "exceljs"],
+          charts: ["recharts"],
+        },
+      },
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

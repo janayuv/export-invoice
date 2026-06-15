@@ -179,7 +179,7 @@ export default function App() {
               <Route
                 path="purchase-orders/new"
                 element={
-                  <PermissionGuard permission="create_invoice">
+                  <PermissionGuard permission="create_purchase_order">
                     <PurchaseOrderNew />
                   </PermissionGuard>
                 }

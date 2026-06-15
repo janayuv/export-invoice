@@ -805,7 +805,9 @@ pub fn verify_audit_chain(
 #[tauri::command]
 pub fn get_auth_telemetry_summary(
     db: State<'_, AppDb>,
+    session: State<'_, AuthSession>,
 ) -> Result<AuthTelemetrySummary, String> {
+    require_admin_session(&session)?;
     db.with_conn(logic_get_auth_telemetry_summary)
 }
 
@@ -1543,6 +1545,23 @@ pub(crate) mod tests {
 
     #[test]
     fn require_admin_denies_operator_session() {
+        let session = AuthSession::new();
+        session.set(2, "operator", "Op", vec![]).unwrap();
+        let err = crate::rbac::require_admin_session(&session).unwrap_err();
+        assert!(err.contains("ERR_PERMISSION"));
+    }
+
+    // get_auth_telemetry_summary now guards on require_admin_session; these assert
+    // the same guard the command applies before reading telemetry.
+    #[test]
+    fn telemetry_summary_denies_unauthenticated() {
+        let session = AuthSession::new();
+        let err = crate::rbac::require_admin_session(&session).unwrap_err();
+        assert!(err.contains("No active session"));
+    }
+
+    #[test]
+    fn telemetry_summary_denies_operator() {
         let session = AuthSession::new();
         session.set(2, "operator", "Op", vec![]).unwrap();
         let err = crate::rbac::require_admin_session(&session).unwrap_err();

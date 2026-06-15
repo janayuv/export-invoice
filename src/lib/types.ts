@@ -61,6 +61,8 @@ export interface Invoice {
   created_at: string;
   updated_at: string;
   items?: InvoiceItem[];
+  /** Sum of line-item totals, populated by the list query (not the detail read). */
+  amount?: number;
 }
 
 export interface InvoiceItem {

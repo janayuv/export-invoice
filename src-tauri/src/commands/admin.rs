@@ -438,7 +438,7 @@ pub fn admin_db_overview(
         for name in &table_names {
             let count: i64 = conn
                 .query_row(
-                    &format!("SELECT COUNT(*) FROM \"{}\"", name.replace('"', "")),
+                    &format!("SELECT COUNT(*) FROM \"{}\"", name.replace('"', "\"\"")),
                     [],
                     |r| r.get(0),
                 )
@@ -506,7 +506,7 @@ pub fn admin_browse_table(
 
         let total: i64 = conn
             .query_row(
-                &format!("SELECT COUNT(*) FROM \"{}\"", table_name.replace('"', "")),
+                &format!("SELECT COUNT(*) FROM \"{}\"", table_name.replace('"', "\"\"")),
                 [],
                 |r| r.get(0),
             )
@@ -514,7 +514,7 @@ pub fn admin_browse_table(
 
         let sql = format!(
             "SELECT * FROM \"{}\" LIMIT ?1 OFFSET ?2",
-            table_name.replace('"', "")
+            table_name.replace('"', "\"\"")
         );
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let col_count = stmt.column_count();

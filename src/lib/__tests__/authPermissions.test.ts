@@ -54,6 +54,14 @@ describe("hasPermission — viewer", () => {
   });
 });
 
+describe("hasPermission — create_purchase_order", () => {
+  it("admin and operator can create POs; viewer cannot", () => {
+    expect(hasPermission("admin", "create_purchase_order")).toBe(true);
+    expect(hasPermission("operator", "create_purchase_order")).toBe(true);
+    expect(hasPermission("viewer", "create_purchase_order")).toBe(false);
+  });
+});
+
 // ── canEditInvoiceByStatus ────────────────────────────────────────────────────
 
 describe("canEditInvoiceByStatus", () => {

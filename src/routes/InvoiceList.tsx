@@ -26,7 +26,6 @@ import { PageLoader } from "@/components/PageLoader";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useInvoices, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDb } from "@/lib/db";
 import { formatInvoiceDisplayDate, fmtAmount } from "@/lib/invoiceDocument";
 import {
   compareNumbers,
@@ -77,32 +76,15 @@ export function InvoiceList() {
   const [dateTo, setDateTo] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>("invoice_date");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
-  const [totals, setTotals] = useState<Record<number, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const canBulk = can("finalize_invoice") || can("delete_invoice");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const db = await getDb();
-        const rows = await db.select<{ id: number; total: number }[]>(`
-          SELECT invoice_id as id, COALESCE(SUM(total_amount), 0) as total
-          FROM invoice_items
-          GROUP BY invoice_id
-        `);
-        const map: Record<number, number> = {};
-        rows.forEach((r) => { map[r.id] = r.total; });
-        setTotals(map);
-      } catch {
-        /* DB not available outside Tauri */
-      }
-    })();
-  }, [invoices]);
-
   // Clear selection when filters change.
-  useEffect(() => { setSelectedIds(new Set()); }, [statusFilter, globalFilter, dateFrom, dateTo]);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [statusFilter, globalFilter, dateFrom, dateTo]);
 
   function handleSort(key: SortKey) {
     const next = toggleSort(sortKey, sortDir, key);
@@ -120,16 +102,15 @@ export function InvoiceList() {
       const q = globalFilter.toLowerCase();
       data = data.filter(
         (i) =>
-          i.invoice_number.toLowerCase().includes(q) ||
-          i.consignee_name.toLowerCase().includes(q)
+          i.invoice_number.toLowerCase().includes(q) || i.consignee_name.toLowerCase().includes(q),
       );
     }
     if (sortKey) {
       data = [...data].sort((a, b) => {
-        let cmp = 0;
+        let cmp: number;
         switch (sortKey) {
           case "amount":
-            cmp = compareNumbers(totals[a.id] ?? 0, totals[b.id] ?? 0);
+            cmp = compareNumbers(a.amount ?? 0, b.amount ?? 0);
             break;
           default:
             cmp = compareStrings(String(a[sortKey] ?? ""), String(b[sortKey] ?? ""));
@@ -138,7 +119,7 @@ export function InvoiceList() {
       });
     }
     return data;
-  }, [invoices, statusFilter, globalFilter, dateFrom, dateTo, sortKey, sortDir, totals]);
+  }, [invoices, statusFilter, globalFilter, dateFrom, dateTo, sortKey, sortDir]);
 
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id));
   const someSelected = selectedIds.size > 0;
@@ -146,7 +127,8 @@ export function InvoiceList() {
   function toggleRow(id: number) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -157,7 +139,10 @@ export function InvoiceList() {
 
   const handleBulkFinalize = useCallback(async () => {
     const drafts = filtered.filter((i) => selectedIds.has(i.id) && i.status === "draft");
-    if (drafts.length === 0) { toast.info("No draft invoices selected."); return; }
+    if (drafts.length === 0) {
+      toast.info("No draft invoices selected.");
+      return;
+    }
     const ok = await confirm({
       title: `Finalize ${drafts.length} invoice${drafts.length > 1 ? "s" : ""}?`,
       description: "Finalized invoices cannot be edited.",
@@ -168,7 +153,11 @@ export function InvoiceList() {
     setBulkBusy(true);
     let failed = 0;
     for (const inv of drafts) {
-      try { await finalizeInvoice(inv.id); } catch { failed++; }
+      try {
+        await finalizeInvoice(inv.id);
+      } catch {
+        failed++;
+      }
     }
     setBulkBusy(false);
     setSelectedIds(new Set());
@@ -189,7 +178,11 @@ export function InvoiceList() {
     setBulkBusy(true);
     let failed = 0;
     for (const inv of ids) {
-      try { await deleteInvoice(inv.id); } catch { failed++; }
+      try {
+        await deleteInvoice(inv.id);
+      } catch {
+        failed++;
+      }
     }
     setBulkBusy(false);
     setSelectedIds(new Set());
@@ -291,25 +284,27 @@ export function InvoiceList() {
                     className={cn(
                       "px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-400 dark:text-zinc-600",
                       right ? "text-right" : "text-left",
-                      cls
+                      cls,
                     )}
                   >
                     <button
                       type="button"
                       onClick={() => handleSort(key)}
                       aria-sort={
-                        sortKey === key
-                          ? sortDir === "asc" ? "ascending" : "descending"
-                          : "none"
+                        sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"
                       }
                       className={cn(
                         "inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors",
-                        right && "ml-auto"
+                        right && "ml-auto",
                       )}
                     >
                       {label}
                       {sortKey === key ? (
-                        sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                        sortDir === "asc" ? (
+                          <ArrowUp size={11} />
+                        ) : (
+                          <ArrowDown size={11} />
+                        )
                       ) : (
                         <ArrowUpDown size={11} className="opacity-40" />
                       )}
@@ -362,7 +357,10 @@ export function InvoiceList() {
                       {canBulk && (
                         <td
                           className="px-3 py-2.5"
-                          onClick={(e) => { e.stopPropagation(); toggleRow(inv.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRow(inv.id);
+                          }}
                         >
                           <input
                             type="checkbox"
@@ -394,7 +392,7 @@ export function InvoiceList() {
                         {inv.currency}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                        {totals[inv.id] !== undefined ? fmtAmount(totals[inv.id]) : "—"}
+                        {inv.amount !== undefined ? fmtAmount(inv.amount) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
                         <span
@@ -403,7 +401,7 @@ export function InvoiceList() {
                             "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
                             inv.status === "final"
                               ? "bg-indigo-400/15 text-indigo-400"
-                              : "bg-amber-400/15 text-amber-400"
+                              : "bg-amber-400/15 text-amber-400",
                           )}
                         >
                           {inv.status}

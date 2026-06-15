@@ -41,6 +41,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   view_invoices:          "View Invoices",
   export_invoice:         "Export Invoice",
   create_invoice:         "Create Invoice",
+  create_purchase_order:  "Create Purchase Order",
   edit_invoice:           "Edit Draft Invoice",
   edit_final_invoice:     "Edit Final Invoice",
   edit_confirmed_po:      "Edit Confirmed PO",

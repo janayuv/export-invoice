@@ -65,10 +65,8 @@ export function useDraftAutosave<T>({
     }
 
     scheduleSave();
-    const interval = setInterval(scheduleSave, DEBOUNCE_MS * 2);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      clearInterval(interval);
     };
   }, [enabled, getValues, isEmpty, storageKey, watchDep]);
 }

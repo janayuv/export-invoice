@@ -110,6 +110,7 @@ export const PERMISSIONS = {
   view_invoices: ["admin", "operator", "viewer"],
   export_invoice: ["admin", "operator", "viewer"],
   create_invoice: ["admin", "operator"],
+  create_purchase_order: ["admin", "operator"],
   edit_invoice: ["admin", "operator"],
   edit_final_invoice: ["admin"],
   edit_confirmed_po: ["admin"],

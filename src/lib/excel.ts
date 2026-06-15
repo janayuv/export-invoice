@@ -1,6 +1,4 @@
 import ExcelJS from "exceljs";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
 import type { Invoice, CompanySettings } from "@/lib/types";
 import {
   amountInWords,
@@ -556,12 +554,14 @@ function secDeclaration(
   return r;
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
-// Returns true when file written, false when user cancelled, throws on error.
-export async function exportInvoiceExcel(
+// ─── Workbook builder ─────────────────────────────────────────────────────────
+// Pure: builds the .xlsx and returns its bytes. No Tauri/filesystem dependency so
+// this module can be imported into a Web Worker (see lib/exportWorker.ts). The
+// save dialog + writeFile orchestration lives in lib/exports.ts.
+export async function buildInvoiceExcelBytes(
   invoice: Invoice,
   company: CompanySettings,
-): Promise<boolean> {
+): Promise<Uint8Array> {
   const showSa = invoice.show_sa_number ?? false;
 
   const wb      = new ExcelJS.Workbook();
@@ -619,17 +619,6 @@ export async function exportInvoiceExcel(
   ws.pageSetup.printArea = `A1:I${r - 1}`;
 
   // writeBuffer() uses the browser-compatible JSZip path in ExcelJS's browser bundle
-  const buf   = await wb.xlsx.writeBuffer();
-  const bytes = new Uint8Array(buf as ArrayBuffer);
-
-  const safeName = invoice.invoice_number.replace(/\//g, "-");
-  const path     = await save({
-    defaultPath: `${safeName}.xlsx`,
-    filters:     [{ name: "Excel Workbook", extensions: ["xlsx"] }],
-    title:       "Save Invoice as Excel",
-  });
-  if (!path) return false;
-
-  await writeFile(path, bytes);
-  return true;
+  const buf = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buf as ArrayBuffer);
 }

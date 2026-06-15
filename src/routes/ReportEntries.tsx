@@ -4,11 +4,12 @@ import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
+  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { Search, FileSpreadsheet, Pencil, Trash2 } from "lucide-react";
+import { Search, FileSpreadsheet, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,8 @@ import {
 } from "@/components/ui/table";
 import { getEntriesReport, deleteEntry } from "@/hooks/useEntries";
 import { fmtAmount } from "@/lib/invoiceDocument";
-import { exportEntriesReportExcel, type EntryReportRow } from "@/lib/reportExcel";
+import { type EntryReportRow } from "@/lib/reportExcel";
+import { exportEntriesReportExcel } from "@/lib/exports";
 import type { Entry } from "@/lib/types";
 
 /** Flatten an entry into one report row per line item (entry fields repeated). */
@@ -76,6 +78,7 @@ export function ReportEntries() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [globalFilter, setGlobalFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -167,6 +170,11 @@ export function ReportEntries() {
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    // Client-side pagination keeps the DOM light: each entry flattens to one row
+    // per line item, so an unpaginated report can render thousands of <tr>.
+    // autoResetPageIndex (default true) snaps back to page 1 when filters change.
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 100 } },
   });
 
   async function handleDelete(entryId: number) {
@@ -187,15 +195,23 @@ export function ReportEntries() {
   }
 
   async function handleExport() {
+    if (isExporting) return;
     if (filtered.length === 0) {
       toast.error("No rows to export");
       return;
     }
+    setIsExporting(true);
+    const t = toast.loading("Generating report…");
     try {
-      await exportEntriesReportExcel(filtered);
-      toast.success("Report exported");
+      // Built off-thread in a Web Worker, so the loading toast stays responsive
+      // while SheetJS serializes large reports.
+      const saved = await exportEntriesReportExcel(filtered);
+      if (saved) toast.success("Report exported", { id: t });
+      else toast.info("Report export cancelled", { id: t });
     } catch (e) {
-      toast.error(`Export failed: ${e}`);
+      toast.error(`Export failed: ${e}`, { id: t });
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -207,7 +223,7 @@ export function ReportEntries() {
         title="Entry Report"
         subtitle={`${filtered.length} rows`}
         actions={
-          <Button variant="outline" size="sm" onClick={handleExport}>
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting}>
             <FileSpreadsheet size={13} className="mr-1.5" />
             Export Excel
           </Button>
@@ -256,6 +272,7 @@ export function ReportEntries() {
       {loading ? (
         <PageLoader />
       ) : (
+        <>
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
@@ -295,6 +312,35 @@ export function ReportEntries() {
             </TableBody>
           </Table>
         </div>
+
+        {table.getRowCount() > 0 && (
+          <div className="flex items-center justify-end gap-2">
+            <span className="text-xs text-zinc-500 tabular-nums">
+              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              {" · "}
+              {table.getRowCount().toLocaleString()} rows
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!table.getCanPreviousPage()}
+              onClick={() => table.previousPage()}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!table.getCanNextPage()}
+              onClick={() => table.nextPage()}
+              aria-label="Next page"
+            >
+              <ChevronRight size={14} />
+            </Button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

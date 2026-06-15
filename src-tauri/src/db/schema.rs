@@ -650,6 +650,20 @@ pub fn get_migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 36,
+            description: "seed_create_purchase_order_permission",
+            // Separates PO creation from invoice creation. Operator is seeded
+            // granted=1 to preserve the prior behaviour (PO creation used to be
+            // gated by create_invoice, which operators hold); viewer stays denied.
+            // Admin is never stored — always the full set.
+            sql: r#"
+                INSERT OR IGNORE INTO role_permissions (role, permission, granted) VALUES
+                    ('operator', 'create_purchase_order', 1),
+                    ('viewer',   'create_purchase_order', 0);
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -858,12 +872,12 @@ mod tests {
         let op_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM role_permissions WHERE role='operator'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(op_count, 10, "operator seed rows missing");
+        assert_eq!(op_count, 11, "operator seed rows missing");
 
         let vw_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM role_permissions WHERE role='viewer'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(vw_count, 10, "viewer seed rows missing");
+        assert_eq!(vw_count, 11, "viewer seed rows missing");
 
         // Migration 33: previously-admin-only permissions seeded with granted=0
         let new_perms = ["finalize_invoice", "delete_invoice", "edit_final_invoice",

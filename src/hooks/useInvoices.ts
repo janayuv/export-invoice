@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
+import { safeJsonParse } from "@/lib/utils";
 import type { Invoice, InvoiceItem, InvoiceFormValues, PackingListItem } from "@/lib/types";
 
 function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
@@ -55,7 +56,9 @@ export function useInvoices() {
         const db = await getDb();
         return db.select<Invoice[]>(
           `SELECT id, invoice_number, invoice_date, transport_mode,
-                  consignee_name, country_of_destination, currency, status, created_at
+                  consignee_name, country_of_destination, currency, status, created_at,
+                  (SELECT COALESCE(SUM(total_amount), 0)
+                     FROM invoice_items WHERE invoice_id = invoices.id) AS amount
            FROM invoices ORDER BY created_at DESC`
         );
       });
@@ -82,9 +85,7 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
   });
   if (rows.length === 0) return null;
   const invoice = rows[0];
-  invoice.packing_list = JSON.parse(
-    (invoice.packing_list as unknown as string) || "[]"
-  ) as PackingListItem[];
+  invoice.packing_list = safeJsonParse<PackingListItem[]>(invoice.packing_list, []);
   const items = await withRetry(async () => {
     const db = await getDb();
     return db.select<InvoiceItem[]>(
