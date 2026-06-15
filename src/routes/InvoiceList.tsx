@@ -106,7 +106,7 @@ export function InvoiceList() {
     }
     if (sortKey) {
       data = [...data].sort((a, b) => {
-        let cmp = 0;
+        let cmp: number;
         switch (sortKey) {
           case "amount":
             cmp = compareNumbers(a.amount ?? 0, b.amount ?? 0);

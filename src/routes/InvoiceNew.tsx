@@ -112,6 +112,7 @@ export function InvoiceNew() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const form = useForm<InvoiceFormSchema, any, InvoiceFormSchema>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- zod v4 + RHF resolver generics mismatch; tracked for a proper typing fix
     resolver: zodResolver(invoiceFormSchema) as any,
     defaultValues: {
       invoice_number: "",

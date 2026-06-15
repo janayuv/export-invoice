@@ -59,6 +59,7 @@ export function Settings() {
     formState: { errors, isSubmitting },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useForm<CompanySettingsFormValues, any, CompanySettingsFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- zod v4 + RHF resolver generics mismatch; tracked for a proper typing fix
     resolver: zodResolver(companySettingsSchema) as any,
   });
 

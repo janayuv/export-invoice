@@ -59,7 +59,7 @@ export function Layout() {
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
   useEffect(() => {
     try { localStorage.setItem("sidebar_collapsed", String(collapsed)); }
-    catch {}
+    catch { /* localStorage unavailable — ignore */ }
   }, [collapsed]);
 
   const isDark = mounted && resolvedTheme === "dark";

@@ -12,9 +12,7 @@ export type ExportRequest =
   | { kind: "invoice-excel"; invoice: Invoice; company: CompanySettings }
   | { kind: "report-excel"; rows: EntryReportRow[] };
 
-export type ExportResponse =
-  | { ok: true; bytes: ArrayBuffer }
-  | { ok: false; error: string };
+export type ExportResponse = { ok: true; bytes: ArrayBuffer } | { ok: false; error: string };
 
 self.onmessage = async (e: MessageEvent<ExportRequest>) => {
   try {
