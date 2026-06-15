@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
 import { safeJsonParse } from "@/lib/utils";
+import { useAsyncList } from "@/hooks/useAsyncList";
 import type { Entry, EntryFormValues, EntryItem } from "@/lib/types";
 
 /** List row for the Entry table. */
@@ -28,35 +29,20 @@ export interface InvoiceForCustomer {
 }
 
 export function useEntries() {
-  const [entries, setEntries] = useState<EntrySummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadList = useCallback(async () => {
-    try {
-      setLoading(true);
-      const rows = await withRetry(async () => {
+  const loader = useCallback(
+    () =>
+      withRetry(async () => {
         const db = await getDb();
         return db.select<EntrySummary[]>(
           `SELECT id, customer_name, invoice_number, invoice_date, po_number,
                   local_invoice_no, shipping_bill_no, status, created_at
-           FROM entries ORDER BY created_at DESC`
+           FROM entries ORDER BY created_at DESC`,
         );
-      });
-      setEntries(rows);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadList();
-  }, [loadList]);
-
-  return { entries, loading, error, reload: loadList };
+      }),
+    [],
+  );
+  const { data, loading, error, reload } = useAsyncList<EntrySummary>(loader);
+  return { entries: data, loading, error, reload };
 }
 
 export async function getEntry(id: number): Promise<Entry | null> {
@@ -96,7 +82,7 @@ export async function getEntriesReport(): Promise<Entry[]> {
  */
 export async function getInvoicesByCustomerId(
   customerId: number,
-  currentEntryId: number | null = null
+  currentEntryId: number | null = null,
 ): Promise<InvoiceForCustomer[]> {
   return withRetry(async () => {
     const db = await getDb();
@@ -111,39 +97,36 @@ export async function getInvoicesByCustomerId(
              AND id != COALESCE(?, 0)
          )
        ORDER BY i.created_at DESC`,
-      [customerId, currentEntryId]
+      [customerId, currentEntryId],
     );
   });
 }
 
 // ── Write commands — all validation and RBAC now live in Rust ─────────────────
 
-export async function createEntry(
-  data: EntryFormValues,
-  createdBy?: number
-): Promise<number> {
+export async function createEntry(data: EntryFormValues, createdBy?: number): Promise<number> {
   return invoke<number>("create_entry", {
     payload: {
-      customer_id:        data.customer_id,
-      invoice_id:         data.invoice_id,
-      purchase_order_id:  data.purchase_order_id,
-      customer_name:      data.customer_name,
-      customer_address:   data.customer_address,
-      invoice_number:     data.invoice_number,
-      invoice_date:       data.invoice_date,
-      po_number:          data.po_number,
-      po_date:            data.po_date,
-      customer_po_no:     data.customer_po_no,
-      currency:           data.currency,
-      exchange_rate:      data.exchange_rate,
-      items:              data.items,
-      local_invoice_no:   data.local_invoice_no,
+      customer_id: data.customer_id,
+      invoice_id: data.invoice_id,
+      purchase_order_id: data.purchase_order_id,
+      customer_name: data.customer_name,
+      customer_address: data.customer_address,
+      invoice_number: data.invoice_number,
+      invoice_date: data.invoice_date,
+      po_number: data.po_number,
+      po_date: data.po_date,
+      customer_po_no: data.customer_po_no,
+      currency: data.currency,
+      exchange_rate: data.exchange_rate,
+      items: data.items,
+      local_invoice_no: data.local_invoice_no,
       local_invoice_date: data.local_invoice_date,
-      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_no: data.shipping_bill_no,
       shipping_bill_date: data.shipping_bill_date,
-      bl_awb_no:          data.bl_awb_no,
-      bl_awb_date:        data.bl_awb_date,
-      status:             data.status,
+      bl_awb_no: data.bl_awb_no,
+      bl_awb_date: data.bl_awb_date,
+      status: data.status,
     },
     createdBy: createdBy ?? null,
   });
@@ -152,32 +135,32 @@ export async function createEntry(
 export async function updateEntry(
   id: number,
   data: EntryFormValues,
-  expectedRowVersion: number
+  expectedRowVersion: number,
 ): Promise<void> {
   await invoke("update_entry", {
     id,
     expectedRowVersion,
     payload: {
-      customer_id:        data.customer_id,
-      invoice_id:         data.invoice_id,
-      purchase_order_id:  data.purchase_order_id,
-      customer_name:      data.customer_name,
-      customer_address:   data.customer_address,
-      invoice_number:     data.invoice_number,
-      invoice_date:       data.invoice_date,
-      po_number:          data.po_number,
-      po_date:            data.po_date,
-      customer_po_no:     data.customer_po_no,
-      currency:           data.currency,
-      exchange_rate:      data.exchange_rate,
-      items:              data.items,
-      local_invoice_no:   data.local_invoice_no,
+      customer_id: data.customer_id,
+      invoice_id: data.invoice_id,
+      purchase_order_id: data.purchase_order_id,
+      customer_name: data.customer_name,
+      customer_address: data.customer_address,
+      invoice_number: data.invoice_number,
+      invoice_date: data.invoice_date,
+      po_number: data.po_number,
+      po_date: data.po_date,
+      customer_po_no: data.customer_po_no,
+      currency: data.currency,
+      exchange_rate: data.exchange_rate,
+      items: data.items,
+      local_invoice_no: data.local_invoice_no,
       local_invoice_date: data.local_invoice_date,
-      shipping_bill_no:   data.shipping_bill_no,
+      shipping_bill_no: data.shipping_bill_no,
       shipping_bill_date: data.shipping_bill_date,
-      bl_awb_no:          data.bl_awb_no,
-      bl_awb_date:        data.bl_awb_date,
-      status:             data.status,
+      bl_awb_no: data.bl_awb_no,
+      bl_awb_date: data.bl_awb_date,
+      status: data.status,
     },
   });
 }

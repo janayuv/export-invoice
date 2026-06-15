@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
 import { safeJsonParse } from "@/lib/utils";
+import { useAsyncList } from "@/hooks/useAsyncList";
 import type { Invoice, InvoiceItem, InvoiceFormValues, PackingListItem } from "@/lib/types";
 
 function getFiscalYear(date: Date): { fyStart: number; fyLabel: string } {
@@ -18,9 +19,7 @@ export async function generateInvoiceNumber(date?: Date): Promise<string> {
   const db = await getDb();
 
   const settingsRows = await withRetry(() =>
-    db.select<{ fiscal_year: string }[]>(
-      "SELECT fiscal_year FROM company_settings WHERE id = 1"
-    )
+    db.select<{ fiscal_year: string }[]>("SELECT fiscal_year FROM company_settings WHERE id = 1"),
   );
   const overrideFy = settingsRows[0]?.fiscal_year ?? "";
 
@@ -36,46 +35,30 @@ export async function generateInvoiceNumber(date?: Date): Promise<string> {
   const rows = await withRetry(() =>
     db.select<{ last_number: number }[]>(
       "SELECT last_number FROM invoice_sequence WHERE year = ?",
-      [fyStart]
-    )
+      [fyStart],
+    ),
   );
   const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
   return `EXP/${next}/${fyLabel}`;
 }
 
-
 export function useInvoices() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadList = useCallback(async () => {
-    try {
-      setLoading(true);
-      const rows = await withRetry(async () => {
+  const loader = useCallback(
+    () =>
+      withRetry(async () => {
         const db = await getDb();
         return db.select<Invoice[]>(
           `SELECT id, invoice_number, invoice_date, transport_mode,
                   consignee_name, country_of_destination, currency, status, created_at,
                   (SELECT COALESCE(SUM(total_amount), 0)
                      FROM invoice_items WHERE invoice_id = invoices.id) AS amount
-           FROM invoices ORDER BY created_at DESC`
+           FROM invoices ORDER BY created_at DESC`,
         );
-      });
-      setInvoices(rows);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadList();
-  }, [loadList]);
-
-  return { invoices, loading, error, reload: loadList };
+      }),
+    [],
+  );
+  const { data, loading, error, reload } = useAsyncList<Invoice>(loader);
+  return { invoices: data, loading, error, reload };
 }
 
 export async function getInvoice(id: number): Promise<Invoice | null> {
@@ -90,7 +73,7 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
     const db = await getDb();
     return db.select<InvoiceItem[]>(
       "SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sr_no",
-      [id]
+      [id],
     );
   });
   invoice.items = items;
@@ -103,7 +86,11 @@ export async function createInvoice(data: InvoiceFormValues): Promise<number> {
   });
 }
 
-export async function updateInvoice(id: number, data: InvoiceFormValues, expectedRowVersion: number): Promise<void> {
+export async function updateInvoice(
+  id: number,
+  data: InvoiceFormValues,
+  expectedRowVersion: number,
+): Promise<void> {
   await invoke("update_invoice", {
     id,
     expectedRowVersion,
