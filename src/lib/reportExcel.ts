@@ -1,6 +1,4 @@
 import * as XLSX from "xlsx";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
 import { formatInvoiceDisplayDate } from "@/lib/invoiceDocument";
 
 /** One flattened report row: entry-level fields repeated per invoice line item. */
@@ -45,7 +43,10 @@ const HEADER = [
   "BL/AWB Date",
 ];
 
-export async function exportEntriesReportExcel(rows: EntryReportRow[]): Promise<void> {
+// Pure: builds the report .xlsx and returns its bytes. No Tauri/filesystem
+// dependency so it can run inside a Web Worker (see lib/exportWorker.ts). The
+// save dialog + writeFile orchestration lives in lib/exports.ts.
+export function buildEntriesReportBytes(rows: EntryReportRow[]): Uint8Array {
   // Date columns use formatInvoiceDisplayDate (→ DD.MM.YYYY) for parity with PDF/HTML outputs.
   // Numeric columns are exported as raw numbers so Excel can sort, sum, and filter them;
   // cell format codes (.z) below match the precision shown by fmtAmount in the UI.
@@ -111,15 +112,5 @@ export async function exportEntriesReportExcel(rows: EntryReportRow[]): Promise<
   XLSX.utils.book_append_sheet(wb, ws, "Entry Report");
 
   const wbArray = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const bytes = new Uint8Array(wbArray);
-
-  const stamp = new Date().toISOString().split("T")[0];
-  const path = await save({
-    defaultPath: `entry-report-${stamp}.xlsx`,
-    filters: [{ name: "Excel Workbook", extensions: ["xlsx"] }],
-    title: "Save Entry Report as Excel",
-  });
-
-  if (!path) return;
-  await writeFile(path, bytes);
+  return new Uint8Array(wbArray);
 }

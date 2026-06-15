@@ -10,7 +10,7 @@ import { getInvoice, deleteInvoice, finalizeInvoice, duplicateInvoice } from "@/
 import { useSettings } from "@/hooks/useSettings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { exportInvoicePdf } from "@/lib/pdf";
-import { exportInvoiceExcel } from "@/lib/excel";
+import { exportInvoiceExcel } from "@/lib/exports";
 import { formatInvoiceDisplayDate } from "@/lib/invoiceDocument";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditInvoiceByStatus } from "@/lib/auth";
@@ -25,6 +25,7 @@ export function InvoiceDetail() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -75,30 +76,41 @@ export function InvoiceDetail() {
   }, [invoice, confirm, navigate]);
 
   const handlePdf = useCallback(async () => {
-    if (!invoiceWithLogo || !settings) return;
+    if (!invoiceWithLogo || !settings || isExporting) return;
+    setIsExporting(true);
+    const t = toast.loading("Generating PDF…");
     try {
+      // Yield once so the loading toast can paint before the PDF render briefly
+      // occupies the main thread (@react-pdf runs on the UI thread).
+      await new Promise((r) => setTimeout(r, 0));
       // Only confirm success when a file was actually written; a false return
-      // means the user cancelled the save dialog, so stay silent.
+      // means the user cancelled the save dialog.
       const saved = await exportInvoicePdf(invoiceWithLogo, settings);
-      if (saved) toast.success("PDF exported");
-      else toast.info("PDF export cancelled");
+      if (saved) toast.success("PDF exported", { id: t });
+      else toast.info("PDF export cancelled", { id: t });
     } catch (e) {
-      toast.error(`PDF export failed: ${e}`);
+      toast.error(`PDF export failed: ${e}`, { id: t });
+    } finally {
+      setIsExporting(false);
     }
-  }, [invoiceWithLogo, settings]);
+  }, [invoiceWithLogo, settings, isExporting]);
 
   const handleExcel = useCallback(async () => {
-    if (!invoiceWithLogo || !settings) return;
+    if (!invoiceWithLogo || !settings || isExporting) return;
+    setIsExporting(true);
+    const t = toast.loading("Generating Excel…");
     try {
-      // Only confirm success when a file was actually written; a false return
-      // means the user cancelled the save dialog, so stay silent.
+      // Excel is built off-thread in a Web Worker, so the loading toast stays
+      // responsive while ExcelJS serializes.
       const saved = await exportInvoiceExcel(invoiceWithLogo, settings);
-      if (saved) toast.success("Excel exported");
-      else toast.info("Excel export cancelled");
+      if (saved) toast.success("Excel exported", { id: t });
+      else toast.info("Excel export cancelled", { id: t });
     } catch (e) {
-      toast.error(`Excel export failed: ${e}`);
+      toast.error(`Excel export failed: ${e}`, { id: t });
+    } finally {
+      setIsExporting(false);
     }
-  }, [invoiceWithLogo, settings]);
+  }, [invoiceWithLogo, settings, isExporting]);
 
   const handleDuplicate = useCallback(async () => {
     if (!invoice) return;
@@ -243,11 +255,11 @@ export function InvoiceDetail() {
 
           {can("export_invoice") && (
             <>
-              <Button variant="outline" size="sm" onClick={handlePdf}>
+              <Button variant="outline" size="sm" onClick={handlePdf} disabled={isExporting}>
                 <FileDown size={13} className="mr-1.5" />
                 PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExcel}>
+              <Button variant="outline" size="sm" onClick={handleExcel} disabled={isExporting}>
                 <FileSpreadsheet size={13} className="mr-1.5" />
                 Excel
               </Button>
