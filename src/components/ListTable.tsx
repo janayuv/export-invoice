@@ -32,6 +32,24 @@ export interface ListSort<K extends string = string> {
   onSort: (key: K) => void;
 }
 
+/**
+ * Optional bulk-selection extension. The consumer owns the selected set and all
+ * side effects; the table only renders the leading checkbox column (gated on
+ * `enabled`), reflects `isSelected` per row, and reports toggles. Callbacks take
+ * the row itself — no separate row-id accessor is introduced (`getRowId` stays
+ * the single source of row identity, used for the React key).
+ */
+export interface ListSelection<T> {
+  /** Render the checkbox column only when true (e.g. RBAC-gated). */
+  enabled: boolean;
+  isSelected: (row: T) => boolean;
+  allSelected: boolean;
+  onToggleAll: () => void;
+  onToggleRow: (row: T) => void;
+  selectAllAriaLabel?: string;
+  rowAriaLabel?: (row: T) => string;
+}
+
 export interface ListTableProps<T, K extends string = string> {
   /** Already filtered and sorted by the caller. */
   data: T[];
@@ -42,9 +60,13 @@ export interface ListTableProps<T, K extends string = string> {
   /** Rendered inside a full-width row when `data` is empty (and not loading). */
   emptyState: ReactNode;
   ariaLabel?: string;
+  /** Optional screen-reader-only `<caption>`. */
+  caption?: ReactNode;
   onRowClick?: (row: T) => void;
   /** Controlled sort. Omit for static (non-sortable) headers. */
   sort?: ListSort<K>;
+  /** Optional bulk selection. Omit to render no checkbox column. */
+  selection?: ListSelection<T>;
 }
 
 /**
@@ -59,18 +81,34 @@ export function ListTable<T, K extends string = string>({
   loading,
   emptyState,
   ariaLabel,
+  caption,
   onRowClick,
   sort,
+  selection,
 }: ListTableProps<T, K>) {
   if (loading) return <PageLoader />;
 
   const clickable = !!onRowClick;
+  const showSelect = !!selection?.enabled;
+  const colSpan = columns.length + (showSelect ? 1 : 0);
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
       <table className="w-full text-[12px]" aria-label={ariaLabel}>
+        {caption != null && <caption className="sr-only">{caption}</caption>}
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
+            {showSelect && (
+              <th scope="col" className="px-3 py-2.5 w-8">
+                <input
+                  type="checkbox"
+                  checked={selection!.allSelected}
+                  onChange={selection!.onToggleAll}
+                  aria-label={selection!.selectAllAriaLabel ?? "Select all"}
+                  className="cursor-pointer accent-indigo-500"
+                />
+              </th>
+            )}
             {columns.map((col) => {
               const sortable = col.sortable !== false && !!sort;
               const isSorted = !!sort && sort.sortKey === col.key;
@@ -124,7 +162,7 @@ export function ListTable<T, K extends string = string>({
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length}>{emptyState}</td>
+              <td colSpan={colSpan}>{emptyState}</td>
             </tr>
           ) : (
             data.map((row, index) => (
@@ -143,11 +181,29 @@ export function ListTable<T, K extends string = string>({
                       },
                     }
                   : {})}
+                aria-selected={selection ? selection.isSelected(row) : undefined}
                 className={cn(
                   "border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 transition-colors duration-[80ms]",
                   clickable && "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800",
                 )}
               >
+                {showSelect && (
+                  <td
+                    className="px-3 py-2.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selection!.onToggleRow(row);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selection!.isSelected(row)}
+                      onChange={() => selection!.onToggleRow(row)}
+                      aria-label={selection!.rowAriaLabel?.(row)}
+                      className="cursor-pointer accent-indigo-500"
+                    />
+                  </td>
+                )}
                 {columns.map((col) => (
                   <td
                     key={col.key}
