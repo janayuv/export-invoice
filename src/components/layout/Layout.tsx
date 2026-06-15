@@ -51,15 +51,27 @@ export function Layout() {
   const [appVersion, setAppVersion] = useState("0.4.0");
   const [mounted, setMounted] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem("sidebar_collapsed") === "true"; }
-    catch { return false; }
+    try {
+      return localStorage.getItem("sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
   });
 
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
   useEffect(() => {
-    try { localStorage.setItem("sidebar_collapsed", String(collapsed)); }
-    catch { /* localStorage unavailable — ignore */ }
+    setMounted(true);
+  }, []);
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebar_collapsed", String(collapsed));
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
   }, [collapsed]);
 
   const isDark = mounted && resolvedTheme === "dark";
@@ -67,30 +79,29 @@ export function Layout() {
   const sections: NavSection[] = [
     {
       label: "Overview",
-      items: [
-        { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true },
-      ],
+      items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true }],
     },
     {
       label: "Export Documents",
       items: [
         { to: "/invoices", label: "Invoices", icon: FileText, show: true },
-        { to: "/invoices/new", label: "Create Invoice", icon: PlusCircle, show: can("create_invoice") },
+        {
+          to: "/invoices/new",
+          label: "Create Invoice",
+          icon: PlusCircle,
+          show: can("create_invoice"),
+        },
         { to: "/entries", label: "Entries", icon: ClipboardList, show: true },
         { to: "/customers", label: "Customers", icon: Building2, show: can("create_invoice") },
       ],
     },
     {
       label: "Procurement",
-      items: [
-        { to: "/purchase-orders", label: "Purchase Orders", icon: ShoppingCart, show: true },
-      ],
+      items: [{ to: "/purchase-orders", label: "Purchase Orders", icon: ShoppingCart, show: true }],
     },
     {
       label: "Reports",
-      items: [
-        { to: "/reports/entries", label: "Entry Report", icon: BarChart3, show: true },
-      ],
+      items: [{ to: "/reports/entries", label: "Entry Report", icon: BarChart3, show: true }],
     },
     {
       label: "Administration",
@@ -102,15 +113,60 @@ export function Layout() {
     {
       label: "Admin Center",
       items: [
-        { to: "/admin/database-management", label: "Database Management", icon: Database,    show: can("access_settings") },
-        { to: "/admin/activity-log",        label: "Activity Log",        icon: Activity,    show: can("access_settings") },
-        { to: "/admin/user-activity",       label: "User Activity",       icon: UserCheck,   show: can("access_settings") },
-        { to: "/admin/system-health",       label: "System Health",       icon: HeartPulse,  show: can("access_settings") },
-        { to: "/admin/security-center",     label: "Security Center",     icon: ShieldCheck, show: can("access_settings") },
-        { to: "/admin/roles-permissions",   label: "Roles & Permissions", icon: Lock,        show: can("access_settings") },
-        { to: "/admin/automation-center",   label: "Automation Center",   icon: Zap,         show: can("access_settings") },
-        { to: "/admin/operations-center",   label: "Operations Center",   icon: Gauge,       show: can("access_settings") },
-        { to: "/admin/system-agent",        label: "System Agent",        icon: Bot,         show: can("access_settings") },
+        {
+          to: "/admin/database-management",
+          label: "Database Management",
+          icon: Database,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/activity-log",
+          label: "Activity Log",
+          icon: Activity,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/user-activity",
+          label: "User Activity",
+          icon: UserCheck,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/system-health",
+          label: "System Health",
+          icon: HeartPulse,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/security-center",
+          label: "Security Center",
+          icon: ShieldCheck,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/roles-permissions",
+          label: "Roles & Permissions",
+          icon: Lock,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/automation-center",
+          label: "Automation Center",
+          icon: Zap,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/operations-center",
+          label: "Operations Center",
+          icon: Gauge,
+          show: can("access_settings"),
+        },
+        {
+          to: "/admin/system-agent",
+          label: "System Agent",
+          icon: Bot,
+          show: can("access_settings"),
+        },
       ],
     },
   ];
@@ -119,7 +175,7 @@ export function Layout() {
   const navItemBase = cn(
     "flex items-center rounded-md mx-1.5 my-px text-[12px]",
     "transition-[background,color] duration-100",
-    collapsed ? "px-2 py-2 justify-center" : "gap-2 px-2 py-1.5"
+    collapsed ? "px-2 py-2 justify-center" : "gap-2 px-2 py-1.5",
   );
 
   const navItemInactive =
@@ -133,7 +189,7 @@ export function Layout() {
           "flex-shrink-0 flex flex-col",
           "border-r border-zinc-200 dark:border-zinc-800",
           "transition-[width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-          "overflow-hidden bg-white dark:bg-[#0f0f12]"
+          "overflow-hidden bg-white dark:bg-[#0f0f12]",
         )}
         style={{ width: collapsed ? 52 : 218 }}
       >
@@ -142,7 +198,7 @@ export function Layout() {
           className={cn(
             "flex h-[52px] flex-shrink-0 items-center",
             "border-b border-zinc-200 dark:border-zinc-800",
-            collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+            collapsed ? "justify-center px-0" : "gap-2.5 px-3",
           )}
         >
           {/* Icon box — clicking it expands when collapsed */}
@@ -154,7 +210,7 @@ export function Layout() {
               "bg-indigo-400/15 flex items-center justify-center flex-shrink-0",
               collapsed
                 ? "cursor-pointer hover:bg-indigo-400/25 transition-colors"
-                : "cursor-default"
+                : "cursor-default",
             )}
             title={collapsed ? "Expand sidebar" : "Export Invoice app icon"}
             aria-label={collapsed ? "Expand sidebar" : undefined}
@@ -207,7 +263,7 @@ export function Layout() {
                             updaterState.phase === "downloading" ||
                             updaterState.phase === "done"
                           ? "text-zinc-400/30 cursor-not-allowed"
-                          : "text-zinc-400/50 hover:text-zinc-400"
+                          : "text-zinc-400/50 hover:text-zinc-400",
                     )}
                   >
                     <RefreshCw
@@ -215,7 +271,7 @@ export function Layout() {
                       className={cn(
                         (updaterState.phase === "checking" ||
                           updaterState.phase === "downloading") &&
-                          "animate-spin"
+                          "animate-spin",
                       )}
                     />
                   </button>
@@ -264,7 +320,7 @@ export function Layout() {
                         navItemBase,
                         isActive
                           ? "bg-indigo-400/15 text-indigo-400 font-semibold"
-                          : navItemInactive
+                          : navItemInactive,
                       )
                     }
                   >
@@ -302,9 +358,7 @@ export function Layout() {
             <span className="w-5 flex items-center justify-center flex-shrink-0">
               {isDark ? <Sun size={14} /> : <Moon size={14} />}
             </span>
-            {!collapsed && (
-              <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
-            )}
+            {!collapsed && <span>{isDark ? "Light Mode" : "Dark Mode"}</span>}
           </button>
         </div>
 
@@ -315,7 +369,7 @@ export function Layout() {
               className={cn(
                 "flex items-center gap-2 px-[6px] py-[6px] rounded-md",
                 "bg-zinc-100 dark:bg-zinc-800",
-                collapsed && "justify-center"
+                collapsed && "justify-center",
               )}
             >
               {/* Letter avatar */}
@@ -334,7 +388,7 @@ export function Layout() {
                     <span
                       className={cn(
                         "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold capitalize mt-0.5",
-                        ROLE_BADGE[currentUser.role] ?? "bg-zinc-500/20 text-zinc-400"
+                        ROLE_BADGE[currentUser.role] ?? "bg-zinc-500/20 text-zinc-400",
                       )}
                     >
                       {currentUser.role}

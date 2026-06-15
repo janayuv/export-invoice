@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
 import {
   Save,
@@ -67,13 +68,13 @@ const INCOTERM_OPTIONS: { value: string; label: string }[] = [
 
 // TOC section definitions (as const preserves literal types)
 const TOC_ITEMS = [
-  { id: "sec-customerpo", label: "Customer & PO",   icon: Users     },
-  { id: "sec-details",    label: "Invoice Details", icon: FileText  },
-  { id: "sec-consignee",  label: "Consignee",       icon: UserCheck },
-  { id: "sec-shipping",   label: "Shipping",        icon: Ship      },
-  { id: "sec-goods",      label: "Goods",           icon: Package   },
-  { id: "sec-packing",    label: "Packing",         icon: Boxes     },
-  { id: "sec-weight",     label: "Weight & Notes",  icon: Scale     },
+  { id: "sec-customerpo", label: "Customer & PO", icon: Users },
+  { id: "sec-details", label: "Invoice Details", icon: FileText },
+  { id: "sec-consignee", label: "Consignee", icon: UserCheck },
+  { id: "sec-shipping", label: "Shipping", icon: Ship },
+  { id: "sec-goods", label: "Goods", icon: Package },
+  { id: "sec-packing", label: "Packing", icon: Boxes },
+  { id: "sec-weight", label: "Weight & Notes", icon: Scale },
 ] as const;
 
 export function InvoiceNew() {
@@ -100,20 +101,21 @@ export function InvoiceNew() {
 
   // ── Scroll-tracking refs ────────────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const secCustomerPORef   = useRef<HTMLDivElement>(null);
-  const secDetailsRef      = useRef<HTMLDivElement>(null);
-  const secConsigneeRef    = useRef<HTMLDivElement>(null);
-  const secShippingRef     = useRef<HTMLDivElement>(null);
-  const secGoodsRef        = useRef<HTMLDivElement>(null);
-  const secPackingRef      = useRef<HTMLDivElement>(null);
-  const secWeightRef       = useRef<HTMLDivElement>(null);
+  const secCustomerPORef = useRef<HTMLDivElement>(null);
+  const secDetailsRef = useRef<HTMLDivElement>(null);
+  const secConsigneeRef = useRef<HTMLDivElement>(null);
+  const secShippingRef = useRef<HTMLDivElement>(null);
+  const secGoodsRef = useRef<HTMLDivElement>(null);
+  const secPackingRef = useRef<HTMLDivElement>(null);
+  const secWeightRef = useRef<HTMLDivElement>(null);
 
   const [activeSection, setActiveSection] = useState("sec-customerpo");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const form = useForm<InvoiceFormSchema, any, InvoiceFormSchema>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- zod v4 + RHF resolver generics mismatch; tracked for a proper typing fix
-    resolver: zodResolver(invoiceFormSchema) as any,
+  // show_sa_number/packing_list use .default(), so the schema's input type
+  // (those fields optional) differs from its parsed output. RHF field state
+  // holds the input shape; handleSubmit yields the output (InvoiceFormSchema).
+  const form = useForm<z.input<typeof invoiceFormSchema>, unknown, InvoiceFormSchema>({
+    resolver: zodResolver(invoiceFormSchema),
     defaultValues: {
       invoice_number: "",
       invoice_date: new Date().toISOString().split("T")[0],
@@ -174,14 +176,21 @@ export function InvoiceNew() {
     },
   });
 
-  const { register, setValue, getValues, reset, formState: { errors, isSubmitting } } = form;
+  const {
+    register,
+    setValue,
+    getValues,
+    reset,
+    formState: { errors, isSubmitting },
+  } = form;
   const handleSubmit = form.handleSubmit;
   // useWatch instead of watch() so only these fields trigger a re-render here,
   // not every keystroke in child inputs (e.g. Qty).
-  const currency      = useWatch({ control: form.control, name: "currency" }) ?? "USD";
+  const currency = useWatch({ control: form.control, name: "currency" }) ?? "USD";
   const transportMode = useWatch({ control: form.control, name: "transport_mode" }) ?? "BY SEA";
-  const incoterm      = useWatch({ control: form.control, name: "incoterm" }) ?? "";
-  const showSaNumber  = (useWatch({ control: form.control, name: "show_sa_number" }) ?? true) as boolean;
+  const incoterm = useWatch({ control: form.control, name: "incoterm" }) ?? "";
+  const showSaNumber = (useWatch({ control: form.control, name: "show_sa_number" }) ??
+    true) as boolean;
   const invoiceNumber = useWatch({ control: form.control, name: "invoice_number" });
   const formSnapshot = useWatch({ control: form.control });
 
@@ -189,11 +198,12 @@ export function InvoiceNew() {
   const draftAutosaveEnabled = !isEdit || editingStatus === "draft";
 
   const restoreDraft = useCallback(
-    (data: InvoiceFormSchema) => {
+    // Input shape (pre-parse): matches getValues() and reset() field state.
+    (data: z.input<typeof invoiceFormSchema>) => {
       reset(data);
       toast.success("Draft restored");
     },
-    [reset]
+    [reset],
   );
 
   useDraftAutosave({
@@ -234,7 +244,7 @@ export function InvoiceNew() {
         toast.error(
           inv.status === "final"
             ? "Only administrators can edit finalized invoices"
-            : "You do not have permission to edit this invoice"
+            : "You do not have permission to edit this invoice",
         );
         navigate(`/invoices/${id}`);
         return;
@@ -313,17 +323,17 @@ export function InvoiceNew() {
 
     const sections = [
       { id: "sec-customerpo", ref: secCustomerPORef },
-      { id: "sec-details",    ref: secDetailsRef    },
-      { id: "sec-consignee",  ref: secConsigneeRef  },
-      { id: "sec-shipping",   ref: secShippingRef   },
-      { id: "sec-goods",      ref: secGoodsRef      },
-      { id: "sec-packing",    ref: secPackingRef     },
-      { id: "sec-weight",     ref: secWeightRef     },
+      { id: "sec-details", ref: secDetailsRef },
+      { id: "sec-consignee", ref: secConsigneeRef },
+      { id: "sec-shipping", ref: secShippingRef },
+      { id: "sec-goods", ref: secGoodsRef },
+      { id: "sec-packing", ref: secPackingRef },
+      { id: "sec-weight", ref: secWeightRef },
     ];
 
     function handleScroll() {
       const containerTop = container!.getBoundingClientRect().top;
-      const threshold    = containerTop + 80;
+      const threshold = containerTop + 80;
       let current = "sec-customerpo";
       for (const { id: secId, ref } of sections) {
         const el = ref.current;
@@ -341,12 +351,12 @@ export function InvoiceNew() {
   function scrollToSection(sectionId: string) {
     const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
       "sec-customerpo": secCustomerPORef,
-      "sec-details":    secDetailsRef,
-      "sec-consignee":  secConsigneeRef,
-      "sec-shipping":   secShippingRef,
-      "sec-goods":      secGoodsRef,
-      "sec-packing":    secPackingRef,
-      "sec-weight":     secWeightRef,
+      "sec-details": secDetailsRef,
+      "sec-consignee": secConsigneeRef,
+      "sec-shipping": secShippingRef,
+      "sec-goods": secGoodsRef,
+      "sec-packing": secPackingRef,
+      "sec-weight": secWeightRef,
     };
     refMap[sectionId]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setActiveSection(sectionId);
@@ -420,8 +430,7 @@ export function InvoiceNew() {
         }
       }
 
-      let customer: Customer | null =
-        customers.find((c) => c.id === po.customer_id) ?? null;
+      let customer: Customer | null = customers.find((c) => c.id === po.customer_id) ?? null;
       if (!customer && po.customer_id) {
         customer = await getCustomer(po.customer_id);
       }
@@ -443,8 +452,14 @@ export function InvoiceNew() {
         status: current.status,
         items: current.items,
       });
-      setValue("port_of_discharge", mapped.port_of_discharge || '', { shouldDirty: true, shouldTouch: true });
-      setValue("final_destination", mapped.final_destination || '', { shouldDirty: true, shouldTouch: true });
+      setValue("port_of_discharge", mapped.port_of_discharge || "", {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+      setValue("final_destination", mapped.final_destination || "", {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
       // Force PO-level delivery override (BUSAN / SOUTH KOREA) to take priority over buyer/consignee defaults
       setActivePOItems(po.items ?? []);
       setSelectedPoId(poId);
@@ -476,7 +491,7 @@ export function InvoiceNew() {
     try {
       const finalData = {
         ...data,
-        status: finalize ? "final" as const : data.status,
+        status: finalize ? ("final" as const) : data.status,
         items: includedItems,
       };
       if (isEdit && id) {
@@ -493,7 +508,9 @@ export function InvoiceNew() {
     } catch (e) {
       const msg = String(e);
       if (msg.includes("ERR_CONFLICT:")) {
-        toast.error("This invoice was changed by another session — please reload and re-apply your edits.");
+        toast.error(
+          "This invoice was changed by another session — please reload and re-apply your edits.",
+        );
       } else {
         toast.error(`Error: ${msg}`);
       }
@@ -509,7 +526,6 @@ export function InvoiceNew() {
         onSubmit={handleSubmit((data) => onSubmit(data))}
         className="flex flex-col h-full overflow-hidden"
       >
-
         {/* ── Sticky header (56px) ── */}
         <header className="h-14 shrink-0 flex items-center justify-between px-4 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">
@@ -556,7 +572,6 @@ export function InvoiceNew() {
 
         {/* ── Two-panel body ── */}
         <div className="flex flex-1 overflow-hidden">
-
           {/* Left: TOC rail (168px fixed) */}
           <nav className="w-[168px] shrink-0 overflow-y-auto bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 py-3 px-2 space-y-0.5">
             {TOC_ITEMS.map(({ id: secId, label, icon: Icon }) => (
@@ -568,7 +583,7 @@ export function InvoiceNew() {
                   "w-full flex items-center gap-2 px-2.5 py-[7px] rounded-[6px] text-[12px] text-left transition-colors duration-[80ms]",
                   activeSection === secId
                     ? "bg-indigo-400/15 text-indigo-400 font-semibold"
-                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-50"
+                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-50",
                 )}
               >
                 <Icon size={12} className="shrink-0" />
@@ -582,7 +597,6 @@ export function InvoiceNew() {
             ref={scrollContainerRef}
             className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-[#0c0c0f] p-[18px] space-y-3"
           >
-
             {/* §1 — Customer & PO */}
             <SectionCard
               id="sec-customerpo"
@@ -599,7 +613,9 @@ export function InvoiceNew() {
                   <Combobox
                     className="flex-1 min-w-[200px] max-w-sm"
                     value={selectedCustomerId}
-                    onValueChange={(v) => { void applyCustomer(v); }}
+                    onValueChange={(v) => {
+                      void applyCustomer(v);
+                    }}
                     placeholder="Search and select a customer…"
                     searchPlaceholder="Type customer name or country…"
                     options={customers.map((c) => ({
@@ -616,7 +632,9 @@ export function InvoiceNew() {
                     </span>
                     <Select
                       value={selectedPoId || PO_SELECT_NONE}
-                      onValueChange={(v) => { if (v) void applyPurchaseOrder(v); }}
+                      onValueChange={(v) => {
+                        if (v) void applyPurchaseOrder(v);
+                      }}
                       disabled={loadingPOs}
                     >
                       <SelectTrigger className="flex-1 min-w-[260px] max-w-xl text-[12px] h-8">
@@ -677,9 +695,13 @@ export function InvoiceNew() {
                 <Field label="Transport Mode" error={errors.transport_mode?.message}>
                   <Select
                     value={transportMode}
-                    onValueChange={(v) => setValue("transport_mode", v as InvoiceFormSchema["transport_mode"])}
+                    onValueChange={(v) =>
+                      setValue("transport_mode", v as InvoiceFormSchema["transport_mode"])
+                    }
                   >
-                    <SelectTrigger className="text-[12px] h-8"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="text-[12px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BY SEA">BY SEA</SelectItem>
                       <SelectItem value="BY AIR">BY AIR</SelectItem>
@@ -688,13 +710,25 @@ export function InvoiceNew() {
                   </Select>
                 </Field>
                 <Field label="Buyer's Order No" error={errors.buyer_order_no?.message}>
-                  <Input {...register("buyer_order_no")} placeholder="CTRD-20260225-03" className="text-[12px]" />
+                  <Input
+                    {...register("buyer_order_no")}
+                    placeholder="CTRD-20260225-03"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Duty Drawback" error={errors.duty_drawback?.message}>
-                  <Input {...register("duty_drawback")} placeholder="ALL INDUSTRY RATE" className="text-[12px]" />
+                  <Input
+                    {...register("duty_drawback")}
+                    placeholder="ALL INDUSTRY RATE"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="HS Code" error={errors.hs_code?.message} required>
-                  <Input {...register("hs_code")} placeholder="84148090" className="font-mono text-[12px]" />
+                  <Input
+                    {...register("hs_code")}
+                    placeholder="84148090"
+                    className="font-mono text-[12px]"
+                  />
                 </Field>
                 <Field label="LUT ARN No" error={undefined}>
                   <Input
@@ -705,17 +739,25 @@ export function InvoiceNew() {
                   />
                 </Field>
                 <Field label="Other Reference(s)" error={errors.other_references?.message}>
-                  <Input {...register("other_references")} placeholder="NIL" className="text-[12px]" />
+                  <Input
+                    {...register("other_references")}
+                    placeholder="NIL"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Currency" error={errors.currency?.message}>
                   <Select
                     value={currency}
                     onValueChange={(v) => setValue("currency", v as InvoiceFormSchema["currency"])}
                   >
-                    <SelectTrigger className="text-[12px] h-8"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="text-[12px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       {["USD", "EUR", "GBP", "AED", "INR"].map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -734,19 +776,28 @@ export function InvoiceNew() {
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <div className="space-y-3">
                   <Field label="Consignee Name *" error={errors.consignee_name?.message}>
-                    <Input {...register("consignee_name")} placeholder="CTR CO.,LTD." className="text-[12px]" />
+                    <Input
+                      {...register("consignee_name")}
+                      placeholder="CTR CO.,LTD."
+                      className="text-[12px]"
+                    />
                   </Field>
                   <Field label="Consignee Address *" error={errors.consignee_address?.message}>
                     <Textarea
                       {...register("consignee_address")}
-                      placeholder={"# 68-26 Daehapsaneopdanji-ro, Hap-ri,\nDaehap-myeon, Korea. Zip Code: 50307"}
+                      placeholder={
+                        "# 68-26 Daehapsaneopdanji-ro, Hap-ri,\nDaehap-myeon, Korea. Zip Code: 50307"
+                      }
                       rows={4}
                       className="text-[12px] resize-none"
                     />
                   </Field>
                 </div>
                 <div className="space-y-3">
-                  <Field label="Buyer (if other than consignee)" error={errors.buyer_if_other?.message}>
+                  <Field
+                    label="Buyer (if other than consignee)"
+                    error={errors.buyer_if_other?.message}
+                  >
                     <Textarea
                       {...register("buyer_if_other")}
                       rows={4}
@@ -768,16 +819,21 @@ export function InvoiceNew() {
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Country of Origin" error={errors.country_of_origin?.message}>
-                  <Input {...register("country_of_origin")} defaultValue="INDIA" className="text-[12px]" />
+                  <Input
+                    {...register("country_of_origin")}
+                    defaultValue="INDIA"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Terms of Payment" error={errors.terms_of_payment?.message}>
-                  <Input {...register("terms_of_payment")} placeholder="90 DAYS FROM DATE OF INVOICE" className="text-[12px]" />
+                  <Input
+                    {...register("terms_of_payment")}
+                    placeholder="90 DAYS FROM DATE OF INVOICE"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Incoterm (Delivery)" error={errors.incoterm?.message} required>
-                  <Select
-                    value={incoterm}
-                    onValueChange={(v) => setValue("incoterm", v ?? "")}
-                  >
+                  <Select value={incoterm} onValueChange={(v) => setValue("incoterm", v ?? "")}>
                     <SelectTrigger className="text-[12px] h-8 w-full">
                       <SelectValue placeholder="Select Incoterm…">
                         {(value: string) => {
@@ -800,25 +856,53 @@ export function InvoiceNew() {
                   </Select>
                 </Field>
                 <Field label="Pre-Carriage by" error={errors.pre_carriage_by?.message}>
-                  <Input {...register("pre_carriage_by")} placeholder="BY ROAD" className="text-[12px]" />
+                  <Input
+                    {...register("pre_carriage_by")}
+                    placeholder="BY ROAD"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Place of Receipt" error={errors.place_of_receipt?.message}>
-                  <Input {...register("place_of_receipt")} placeholder="CHENNAI" className="text-[12px]" />
+                  <Input
+                    {...register("place_of_receipt")}
+                    placeholder="CHENNAI"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Pre-Carrier" error={errors.pre_carrier?.message}>
-                  <Input {...register("pre_carrier")} placeholder="CHENNAI" className="text-[12px]" />
+                  <Input
+                    {...register("pre_carrier")}
+                    placeholder="CHENNAI"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Vessel" error={errors.vessel?.message}>
-                  <Input {...register("vessel")} placeholder="Vessel name" className="text-[12px]" />
+                  <Input
+                    {...register("vessel")}
+                    placeholder="Vessel name"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Port of Loading" error={errors.port_of_loading?.message}>
-                  <Input {...register("port_of_loading")} placeholder="CHENNAI" className="text-[12px]" />
+                  <Input
+                    {...register("port_of_loading")}
+                    placeholder="CHENNAI"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Port of Discharge" error={errors.port_of_discharge?.message}>
-                  <Input {...register("port_of_discharge")} placeholder="KOREA" className="text-[12px]" />
+                  <Input
+                    {...register("port_of_discharge")}
+                    placeholder="KOREA"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Final Destination" error={errors.final_destination?.message}>
-                  <Input {...register("final_destination")} placeholder="korea" className="text-[12px]" />
+                  <Input
+                    {...register("final_destination")}
+                    placeholder="korea"
+                    className="text-[12px]"
+                  />
                 </Field>
               </div>
             </SectionCard>
@@ -865,10 +949,18 @@ export function InvoiceNew() {
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Field label="Net Weight" error={undefined}>
-                  <Input {...register("net_weight")} placeholder="405.20 kgs" className="text-[12px]" />
+                  <Input
+                    {...register("net_weight")}
+                    placeholder="405.20 kgs"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <Field label="Gross Weight" error={undefined}>
-                  <Input {...register("gross_weight")} placeholder="420.0 kgs" className="text-[12px]" />
+                  <Input
+                    {...register("gross_weight")}
+                    placeholder="420.0 kgs"
+                    className="text-[12px]"
+                  />
                 </Field>
                 <div className="col-span-full">
                   <Field label="Additional Notes" error={undefined}>
@@ -903,7 +995,8 @@ function Field({
   return (
     <div className="space-y-1">
       <Label className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500 dark:text-zinc-400">
-        {label}{required && <span className="ml-0.5 text-destructive">*</span>}
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
       </Label>
       {children}
       {error && <p className="text-[11px] text-destructive">{error}</p>}
@@ -945,15 +1038,11 @@ function SectionCard({
               {title}
             </p>
             {description && (
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                {description}
-              </p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{description}</p>
             )}
           </div>
         </div>
-        {headerRight && (
-          <div className="shrink-0 ml-3 mt-1">{headerRight}</div>
-        )}
+        {headerRight && <div className="shrink-0 ml-3 mt-1">{headerRight}</div>}
       </div>
       {/* Section body */}
       <div className="p-[14px]">{children}</div>

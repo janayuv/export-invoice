@@ -27,23 +27,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/PageHeader";
 import { PageLoader } from "@/components/PageLoader";
-import {
-  getStoredDensity,
-  setStoredDensity,
-  type UiDensity,
-} from "@/lib/uiDensity";
+import { getStoredDensity, setStoredDensity, type UiDensity } from "@/lib/uiDensity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
 import { companySettingsSchema, type CompanySettingsFormValues } from "@/lib/schemas";
-import {
-  DEFAULT_DB_PATH,
-  clearDbPath,
-  getStoredDbPath,
-  setDbPath,
-} from "@/lib/db";
+import { DEFAULT_DB_PATH, clearDbPath, getStoredDbPath, setDbPath } from "@/lib/db";
 
 export function Settings() {
   const { settings, loading, saveSettings, saveLogo } = useSettings();
@@ -57,10 +48,8 @@ export function Settings() {
     reset,
     control,
     formState: { errors, isSubmitting },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } = useForm<CompanySettingsFormValues, any, CompanySettingsFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- zod v4 + RHF resolver generics mismatch; tracked for a proper typing fix
-    resolver: zodResolver(companySettingsSchema) as any,
+  } = useForm<CompanySettingsFormValues>({
+    resolver: zodResolver(companySettingsSchema),
   });
 
   const fiscalYearOptions = (() => {
@@ -111,9 +100,7 @@ export function Settings() {
         title: "Select SQLite Database",
         multiple: false,
         directory: false,
-        filters: [
-          { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
-        ],
+        filters: [{ name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] }],
       });
       if (typeof selected !== "string") return;
       await setDbPath(selected);
@@ -155,10 +142,7 @@ export function Settings() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="p-[18px] space-y-3 animate-fade-up"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="p-[18px] space-y-3 animate-fade-up">
       <PageHeader
         title="Settings"
         subtitle="Company information and export configuration"
@@ -218,13 +202,25 @@ export function Settings() {
             />
           </Field>
           <Field label="GSTIN" error={errors.gstin?.message}>
-            <Input {...register("gstin")} placeholder="33AAACP5832C1ZW" className="font-mono text-[12px]" />
+            <Input
+              {...register("gstin")}
+              placeholder="33AAACP5832C1ZW"
+              className="font-mono text-[12px]"
+            />
           </Field>
           <Field label="PAN" error={errors.pan?.message}>
-            <Input {...register("pan")} placeholder="AAACP5832C" className="font-mono text-[12px]" />
+            <Input
+              {...register("pan")}
+              placeholder="AAACP5832C"
+              className="font-mono text-[12px]"
+            />
           </Field>
           <Field label="IEC Code" error={errors.iec?.message} className="col-span-2">
-            <Input {...register("iec")} placeholder="IEC0000000000" className="font-mono text-[12px]" />
+            <Input
+              {...register("iec")}
+              placeholder="IEC0000000000"
+              className="font-mono text-[12px]"
+            />
           </Field>
           <Field label="Address *" error={errors.address?.message} className="col-span-2">
             <Textarea
@@ -293,12 +289,20 @@ export function Settings() {
             <Input {...register("swift")} className="font-mono text-[12px]" />
           </Field>
           <Field label="Bank AD Code" error={errors.bank_ad_code?.message}>
-            <Input {...register("bank_ad_code")} placeholder="6850001" className="font-mono text-[12px]" />
+            <Input
+              {...register("bank_ad_code")}
+              placeholder="6850001"
+              className="font-mono text-[12px]"
+            />
           </Field>
           {/* spacer to keep grid aligned */}
           <div />
           <Field label="LUT ARN No" error={errors.lut_arn_no?.message}>
-            <Input {...register("lut_arn_no")} placeholder="AD330426032163J" className="font-mono text-[12px]" />
+            <Input
+              {...register("lut_arn_no")}
+              placeholder="AD330426032163J"
+              className="font-mono text-[12px]"
+            />
           </Field>
           <Field label="LUT ARN Date" error={errors.lut_arn_date?.message}>
             <Input {...register("lut_arn_date")} type="date" className="text-[12px]" />
@@ -409,9 +413,12 @@ export function Settings() {
             )}
           </div>
           <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
-            Pick a .db / .sqlite file to use instead of the bundled database.
-            Restart the app after changing. For backup, restore, and verify, use{" "}
-            <span className="text-zinc-500 dark:text-zinc-400">Admin Center → Database Management</span>.
+            Pick a .db / .sqlite file to use instead of the bundled database. Restart the app after
+            changing. For backup, restore, and verify, use{" "}
+            <span className="text-zinc-500 dark:text-zinc-400">
+              Admin Center → Database Management
+            </span>
+            .
           </p>
         </div>
       </SettingsCard>

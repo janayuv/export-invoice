@@ -28,10 +28,7 @@ export default tseslint.config(
       // false positives here — opt in to just the two stable rules instead.
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       // Allow intentionally-unused args/vars when prefixed with underscore.
       "@typescript-eslint/no-unused-vars": [
         "warn",
