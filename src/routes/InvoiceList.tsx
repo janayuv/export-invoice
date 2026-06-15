@@ -1,15 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Search,
-  PlusCircle,
-  RefreshCw,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  Trash2,
-  CheckCircle,
-} from "lucide-react";
+import { Search, PlusCircle, RefreshCw, Trash2, CheckCircle, FileX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { PageLoader } from "@/components/PageLoader";
+import { ListTable, type ListColumn } from "@/components/ListTable";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useInvoices, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,7 +26,7 @@ import {
   type SortDirection,
 } from "@/lib/listUtils";
 import { cn } from "@/lib/utils";
-import { FileX } from "lucide-react";
+import type { Invoice } from "@/lib/types";
 
 const MODE_CHIP: Record<string, string> = {
   "BY SEA": "SEA",
@@ -54,15 +45,71 @@ type SortKey =
   | "amount"
   | "status";
 
-const COLUMNS: { key: SortKey; label: string; right?: boolean; cls?: string }[] = [
-  { key: "invoice_number", label: "Invoice No" },
-  { key: "invoice_date", label: "Date" },
-  { key: "transport_mode", label: "Mode" },
-  { key: "consignee_name", label: "Consignee" },
-  { key: "country_of_destination", label: "Destination" },
-  { key: "currency", label: "Cur", cls: "w-[60px]" },
-  { key: "amount", label: "Amount", right: true },
-  { key: "status", label: "Status" },
+const COLUMNS: ListColumn<Invoice, SortKey>[] = [
+  {
+    key: "invoice_number",
+    header: "Invoice No",
+    className: "font-mono font-semibold text-indigo-400 whitespace-nowrap",
+    cell: (inv) => inv.invoice_number,
+  },
+  {
+    key: "invoice_date",
+    header: "Date",
+    className: "text-zinc-500 dark:text-zinc-400 whitespace-nowrap",
+    cell: (inv) => formatInvoiceDisplayDate(inv.invoice_date),
+  },
+  {
+    key: "transport_mode",
+    header: "Mode",
+    cell: (inv) => (
+      <span className="inline-flex items-center px-[7px] py-[2px] rounded-[4px] text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+        {MODE_CHIP[inv.transport_mode] ?? inv.transport_mode}
+      </span>
+    ),
+  },
+  {
+    key: "consignee_name",
+    header: "Consignee",
+    className: "font-semibold text-zinc-800 dark:text-zinc-200 max-w-[160px] truncate",
+    cell: (inv) => inv.consignee_name || "—",
+  },
+  {
+    key: "country_of_destination",
+    header: "Destination",
+    className: "text-zinc-500 dark:text-zinc-400 max-w-[120px] truncate",
+    cell: (inv) => inv.country_of_destination || "—",
+  },
+  {
+    key: "currency",
+    header: "Cur",
+    headerClassName: "w-[60px]",
+    className: "font-mono text-[11px] text-zinc-500 dark:text-zinc-400 w-[60px]",
+    cell: (inv) => inv.currency,
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    align: "right",
+    className: "font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap",
+    cell: (inv) => (inv.amount !== undefined ? fmtAmount(inv.amount) : "—"),
+  },
+  {
+    key: "status",
+    header: "Status",
+    cell: (inv) => (
+      <span
+        aria-label={`Status: ${inv.status}`}
+        className={cn(
+          "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
+          inv.status === "final"
+            ? "bg-indigo-400/15 text-indigo-400"
+            : "bg-amber-400/15 text-amber-400",
+        )}
+      >
+        {inv.status}
+      </span>
+    ),
+  },
 ];
 
 export function InvoiceList() {
@@ -256,165 +303,44 @@ export function InvoiceList() {
         </div>
       </div>
 
-      {loading ? (
-        <PageLoader />
-      ) : (
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-[12px]" aria-label="Invoices">
-            <caption className="sr-only">
-              {filtered.length} invoice{filtered.length !== 1 ? "s" : ""} shown
-            </caption>
-            <thead>
-              <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                {canBulk && (
-                  <th scope="col" className="px-3 py-2.5 w-8">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      aria-label="Select all invoices"
-                      className="cursor-pointer accent-indigo-500"
-                    />
-                  </th>
-                )}
-                {COLUMNS.map(({ key, label, right, cls }) => (
-                  <th
-                    key={key}
-                    scope="col"
-                    className={cn(
-                      "px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-400 dark:text-zinc-600",
-                      right ? "text-right" : "text-left",
-                      cls,
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleSort(key)}
-                      aria-sort={
-                        sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"
-                      }
-                      className={cn(
-                        "inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors",
-                        right && "ml-auto",
-                      )}
-                    >
-                      {label}
-                      {sortKey === key ? (
-                        sortDir === "asc" ? (
-                          <ArrowUp size={11} />
-                        ) : (
-                          <ArrowDown size={11} />
-                        )
-                      ) : (
-                        <ArrowUpDown size={11} className="opacity-40" />
-                      )}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={canBulk ? 9 : 8}>
-                    <EmptyState
-                      icon={FileX}
-                      title="No invoices found"
-                      description={
-                        globalFilter || statusFilter !== "all" || dateFrom || dateTo
-                          ? "Try adjusting your search or filters"
-                          : "Create your first invoice to get started"
-                      }
-                      action={
-                        !globalFilter && statusFilter === "all" && !dateFrom && !dateTo ? (
-                          <Button size="sm" onClick={() => navigate("/invoices/new")}>
-                            <PlusCircle size={13} className="mr-1.5" />
-                            New Invoice
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((inv) => {
-                  const isSelected = selectedIds.has(inv.id);
-                  return (
-                    <tr
-                      key={inv.id}
-                      tabIndex={0}
-                      role="row"
-                      aria-selected={isSelected}
-                      onClick={() => navigate(`/invoices/${inv.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/invoices/${inv.id}`);
-                        }
-                      }}
-                      className="border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors duration-[80ms]"
-                    >
-                      {canBulk && (
-                        <td
-                          className="px-3 py-2.5"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleRow(inv.id);
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleRow(inv.id)}
-                            aria-label={`Select invoice ${inv.invoice_number}`}
-                            className="cursor-pointer accent-indigo-500"
-                          />
-                        </td>
-                      )}
-                      <td className="px-3 py-2.5 font-mono font-semibold text-indigo-400 whitespace-nowrap">
-                        {inv.invoice_number}
-                      </td>
-                      <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                        {formatInvoiceDisplayDate(inv.invoice_date)}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex items-center px-[7px] py-[2px] rounded-[4px] text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                          {MODE_CHIP[inv.transport_mode] ?? inv.transport_mode}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 font-semibold text-zinc-800 dark:text-zinc-200 max-w-[160px] truncate">
-                        {inv.consignee_name || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400 max-w-[120px] truncate">
-                        {inv.country_of_destination || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400 w-[60px]">
-                        {inv.currency}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                        {inv.amount !== undefined ? fmtAmount(inv.amount) : "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span
-                          aria-label={`Status: ${inv.status}`}
-                          className={cn(
-                            "inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
-                            inv.status === "final"
-                              ? "bg-indigo-400/15 text-indigo-400"
-                              : "bg-amber-400/15 text-amber-400",
-                          )}
-                        >
-                          {inv.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ListTable<Invoice, SortKey>
+        data={filtered}
+        columns={COLUMNS}
+        getRowId={(inv) => inv.id}
+        loading={loading}
+        ariaLabel="Invoices"
+        caption={`${filtered.length} invoice${filtered.length !== 1 ? "s" : ""} shown`}
+        onRowClick={(inv) => navigate(`/invoices/${inv.id}`)}
+        sort={{ sortKey, sortDir, onSort: handleSort }}
+        selection={{
+          enabled: canBulk,
+          isSelected: (inv) => selectedIds.has(inv.id),
+          allSelected,
+          onToggleAll: toggleAll,
+          onToggleRow: (inv) => toggleRow(inv.id),
+          selectAllAriaLabel: "Select all invoices",
+          rowAriaLabel: (inv) => `Select invoice ${inv.invoice_number}`,
+        }}
+        emptyState={
+          <EmptyState
+            icon={FileX}
+            title="No invoices found"
+            description={
+              globalFilter || statusFilter !== "all" || dateFrom || dateTo
+                ? "Try adjusting your search or filters"
+                : "Create your first invoice to get started"
+            }
+            action={
+              !globalFilter && statusFilter === "all" && !dateFrom && !dateTo ? (
+                <Button size="sm" onClick={() => navigate("/invoices/new")}>
+                  <PlusCircle size={13} className="mr-1.5" />
+                  New Invoice
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      />
 
       {/* Bulk action bar — floats above content when rows are selected */}
       {someSelected && (

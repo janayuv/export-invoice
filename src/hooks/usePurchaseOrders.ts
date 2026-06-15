@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "@/lib/db";
 import { withRetry } from "@/lib/retry";
+import { useAsyncList } from "@/hooks/useAsyncList";
 
 export interface POItem {
   id?: number;
@@ -51,10 +52,9 @@ export interface PurchaseOrder {
   items?: POItem[];
 }
 
-export type POFormValues = Omit<
-  PurchaseOrder,
-  "id" | "row_version" | "created_at" | "items"
-> & { items: POItem[] };
+export type POFormValues = Omit<PurchaseOrder, "id" | "row_version" | "created_at" | "items"> & {
+  items: POItem[];
+};
 
 /** Trim text fields and recompute line totals without altering qty/unit/price values. */
 export function normalizePOFormValues(data: POFormValues): POFormValues {
@@ -99,7 +99,7 @@ export async function previewPONumber(date?: Date): Promise<string> {
     const db = await getDb();
     return db.select<{ last_number: number }[]>(
       "SELECT last_number FROM po_sequence WHERE year = ?",
-      [fyStart]
+      [fyStart],
     );
   });
   const next = rows.length > 0 ? rows[0].last_number + 1 : 1;
@@ -107,32 +107,19 @@ export async function previewPONumber(date?: Date): Promise<string> {
 }
 
 export function usePurchaseOrders() {
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadList = useCallback(async () => {
-    try {
-      setLoading(true);
-      const rows = await withRetry(async () => {
+  const loader = useCallback(
+    () =>
+      withRetry(async () => {
         const db = await getDb();
         return db.select<PurchaseOrder[]>(
           `SELECT id, po_number, po_date, customer_name, customer_po_no, currency, status, created_at
-           FROM purchase_orders ORDER BY created_at DESC`
+           FROM purchase_orders ORDER BY created_at DESC`,
         );
-      });
-      setOrders(rows);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadList(); }, [loadList]);
-
-  return { orders, loading, error, reload: loadList };
+      }),
+    [],
+  );
+  const { data, loading, error, reload } = useAsyncList<PurchaseOrder>(loader);
+  return { orders: data, loading, error, reload };
 }
 
 export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null> {
@@ -146,7 +133,7 @@ export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null
     const db = await getDb();
     return db.select<POItem[]>(
       "SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sr_no",
-      [id]
+      [id],
     );
   });
   return po;
@@ -154,7 +141,7 @@ export async function getPurchaseOrder(id: number): Promise<PurchaseOrder | null
 
 /** Purchase orders linked to a customer master record (for invoice create/edit). */
 export async function getPurchaseOrdersByCustomerId(
-  customerId: number
+  customerId: number,
 ): Promise<PurchaseOrderSummary[]> {
   return withRetry(async () => {
     const db = await getDb();
@@ -163,7 +150,7 @@ export async function getPurchaseOrdersByCustomerId(
        FROM purchase_orders
        WHERE customer_id = ?
        ORDER BY created_at DESC`,
-      [customerId]
+      [customerId],
     );
   });
 }
@@ -173,7 +160,11 @@ export async function createPurchaseOrder(data: POFormValues): Promise<number> {
   return invoke<number>("create_purchase_order", { payload });
 }
 
-export async function updatePurchaseOrder(id: number, data: POFormValues, expectedRowVersion: number): Promise<void> {
+export async function updatePurchaseOrder(
+  id: number,
+  data: POFormValues,
+  expectedRowVersion: number,
+): Promise<void> {
   const payload = normalizePOFormValues(data);
   await invoke("update_purchase_order", { id, expectedRowVersion, payload });
 }

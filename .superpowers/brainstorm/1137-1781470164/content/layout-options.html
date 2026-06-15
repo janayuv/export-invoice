@@ -1,0 +1,220 @@
+<h2>Dashboard Layout</h2>
+<p class="subtitle">Which section arrangement feels most useful day-to-day?</p>
+
+<div class="cards">
+
+  <!-- Option A: Enhanced Current -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8f9fb;padding:14px;min-height:260px;border-radius:6px 6px 0 0;font-family:sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="color:#111;font-size:11px;font-weight:700;">Good morning, Jana &nbsp;<span style="color:#9ca3af;font-weight:400;font-size:9px;">Monday, 15 June 2026</span></div>
+        <div style="background:#111;color:#fff;font-size:9px;padding:4px 8px;border-radius:5px;font-weight:600;">+ New Invoice</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Total</div>
+          <div style="color:#111;font-size:17px;font-weight:800;line-height:1;">48</div>
+          <div style="color:#10b981;font-size:7px;margin-top:3px;">▲ 12%</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Month</div>
+          <div style="color:#6366f1;font-size:17px;font-weight:800;line-height:1;">7</div>
+          <div style="color:#9ca3af;font-size:7px;margin-top:3px;">June</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Draft</div>
+          <div style="color:#f59e0b;font-size:17px;font-weight:800;line-height:1;">3</div>
+          <div style="color:#9ca3af;font-size:7px;margin-top:3px;">pending</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Final</div>
+          <div style="color:#10b981;font-size:17px;font-weight:800;line-height:1;">45</div>
+          <div style="color:#9ca3af;font-size:7px;margin-top:3px;">exported</div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px;">
+          <div style="color:#16a34a;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Value</div>
+          <div style="color:#15803d;font-size:14px;font-weight:800;line-height:1;">$84K</div>
+          <div style="color:#16a34a;font-size:7px;margin-top:3px;">this month</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;margin-bottom:8px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:8px;color:#374151;">View Invoices</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:8px;color:#374151;">Purchase Orders</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:8px;color:#374151;">Reports</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+          <div style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:9px;font-weight:600;color:#111;">Recent Invoices</div>
+          <div style="padding:4px 8px;font-size:8px;color:#6366f1;border-bottom:1px solid #f9fafb;">INV/001 · Acme Corp · $12,500 · <span style="color:#16a34a;">FINAL</span></div>
+          <div style="padding:4px 8px;font-size:8px;color:#6366f1;border-bottom:1px solid #f9fafb;">INV/002 · Beta Ltd · €8,300 · <span style="color:#ca8a04;">DRAFT</span></div>
+          <div style="padding:4px 8px;font-size:8px;color:#6366f1;">INV/003 · Gamma Inc · £5,100 · <span style="color:#16a34a;">FINAL</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;flex:1;">
+            <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:5px;">Export Volume</div>
+            <div style="display:flex;align-items:flex-end;gap:2px;height:36px;">
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:30%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:50%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:45%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:70%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:65%"></div>
+              <div style="flex:1;background:#6366f1;border-radius:1px 1px 0 0;height:100%"></div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;flex:1;">
+            <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:5px;">By Destination</div>
+            <div style="font-size:8px;color:#374151;margin-bottom:3px;">USA <span style="float:right;font-weight:600;">14</span></div>
+            <div style="height:3px;background:#e5e7eb;border-radius:2px;margin-bottom:4px;"><div style="width:80%;height:100%;background:#6366f1;border-radius:2px;"></div></div>
+            <div style="font-size:8px;color:#374151;margin-bottom:3px;">UAE <span style="float:right;font-weight:600;">9</span></div>
+            <div style="height:3px;background:#e5e7eb;border-radius:2px;"><div style="width:50%;height:100%;background:#818cf8;border-radius:2px;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Enhanced Current</h3>
+      <p>Same familiar layout, upgraded. Adds 5th KPI card (export value + trend). Slimmer quick-action bar. Keeps 2-column bottom. Least disruption, fastest to scan.</p>
+    </div>
+  </div>
+
+  <!-- Option B: 3-column with activity feed -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8f9fb;padding:14px;min-height:260px;border-radius:6px 6px 0 0;font-family:sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="color:#111;font-size:11px;font-weight:700;">Good morning, Jana &nbsp;<span style="color:#9ca3af;font-weight:400;font-size:9px;">Monday, 15 June 2026</span></div>
+        <div style="background:#111;color:#fff;font-size:9px;padding:4px 8px;border-radius:5px;font-weight:600;">+ New Invoice</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Total</div>
+          <div style="color:#111;font-size:17px;font-weight:800;line-height:1;">48</div>
+          <div style="height:2px;background:#e5e7eb;border-radius:1px;margin-top:5px;"><div style="width:60%;height:100%;background:#111;border-radius:1px;"></div></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Month</div>
+          <div style="color:#6366f1;font-size:17px;font-weight:800;line-height:1;">7</div>
+          <div style="height:2px;background:#e5e7eb;border-radius:1px;margin-top:5px;"><div style="width:30%;height:100%;background:#6366f1;border-radius:1px;"></div></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Export Value</div>
+          <div style="color:#15803d;font-size:14px;font-weight:800;line-height:1;">$84,200</div>
+          <div style="color:#10b981;font-size:7px;margin-top:3px;">▲ vs last month</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Draft</div>
+          <div style="color:#f59e0b;font-size:17px;font-weight:800;line-height:1;">3</div>
+          <div style="color:#f59e0b;font-size:7px;margin-top:3px;">needs action</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;gap:6px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+          <div style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:9px;font-weight:600;color:#111;">Recent Invoices</div>
+          <div style="padding:4px 8px;font-size:8px;border-bottom:1px solid #f9fafb;display:flex;justify-content:space-between;"><span style="color:#6366f1;">INV/001</span><span style="color:#374151;">Acme Corp</span><span style="color:#16a34a;">●</span></div>
+          <div style="padding:4px 8px;font-size:8px;border-bottom:1px solid #f9fafb;display:flex;justify-content:space-between;"><span style="color:#6366f1;">INV/002</span><span style="color:#374151;">Beta Ltd</span><span style="color:#ca8a04;">●</span></div>
+          <div style="padding:4px 8px;font-size:8px;display:flex;justify-content:space-between;"><span style="color:#6366f1;">INV/003</span><span style="color:#374151;">Gamma Inc</span><span style="color:#16a34a;">●</span></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;">
+          <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:5px;">Volume Trend</div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:40px;">
+            <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:20%"></div>
+            <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:45%"></div>
+            <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:35%"></div>
+            <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:60%"></div>
+            <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:75%"></div>
+            <div style="flex:1;background:#6366f1;border-radius:1px 1px 0 0;height:100%"></div>
+          </div>
+          <div style="font-size:8px;font-weight:600;color:#111;margin-top:8px;margin-bottom:4px;">Destinations</div>
+          <div style="font-size:7px;color:#374151;margin-bottom:3px;">USA <div style="height:2px;background:#e5e7eb;border-radius:1px;margin-top:1px;"><div style="width:80%;height:100%;background:#6366f1;border-radius:1px;"></div></div></div>
+          <div style="font-size:7px;color:#374151;">UAE <div style="height:2px;background:#e5e7eb;border-radius:1px;margin-top:1px;"><div style="width:50%;height:100%;background:#818cf8;border-radius:1px;"></div></div></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;">
+          <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:6px;">Activity</div>
+          <div style="font-size:8px;color:#374151;margin-bottom:6px;padding-left:8px;border-left:2px solid #6366f1;"><span style="color:#6366f1;font-weight:600;">INV/003</span> created<br><span style="color:#9ca3af;font-size:7px;">2 hours ago</span></div>
+          <div style="font-size:8px;color:#374151;margin-bottom:6px;padding-left:8px;border-left:2px solid #10b981;"><span style="color:#16a34a;font-weight:600;">INV/002</span> finalized<br><span style="color:#9ca3af;font-size:7px;">yesterday</span></div>
+          <div style="font-size:8px;color:#374151;padding-left:8px;border-left:2px solid #9ca3af;">PO-005 created<br><span style="color:#9ca3af;font-size:7px;">2 days ago</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — 3-Column + Activity Feed</h3>
+      <p>Wider invoice table. Charts + destinations in a compact middle column. New right column: activity feed (who created/finalized what, when). More information at a glance.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Hero Revenue Banner -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8f9fb;padding:14px;min-height:260px;border-radius:6px 6px 0 0;font-family:sans-serif;">
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="color:#111;font-size:11px;font-weight:700;">Good morning, Jana</div>
+          <div style="color:#9ca3af;font-size:8px;">Monday, 15 June 2026</div>
+        </div>
+        <div style="text-align:center;padding:0 16px;">
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.06em;">Total Export Value — June</div>
+          <div style="color:#15803d;font-size:20px;font-weight:900;line-height:1.1;">$84,200</div>
+          <div style="color:#10b981;font-size:8px;">▲ +18% vs May</div>
+        </div>
+        <div style="background:#111;color:#fff;font-size:9px;padding:5px 10px;border-radius:5px;font-weight:600;">+ New Invoice</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04);">
+          <div style="color:#111;font-size:16px;font-weight:800;line-height:1;">48</div>
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Total</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;text-align:center;">
+          <div style="color:#6366f1;font-size:16px;font-weight:800;line-height:1;">7</div>
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Month</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;text-align:center;">
+          <div style="color:#f59e0b;font-size:16px;font-weight:800;line-height:1;">3</div>
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Drafts</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;text-align:center;">
+          <div style="color:#10b981;font-size:16px;font-weight:800;line-height:1;">45</div>
+          <div style="color:#9ca3af;font-size:7px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Final</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:6px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+          <div style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:9px;font-weight:600;color:#111;display:flex;justify-content:space-between;"><span>Recent Invoices</span><span style="color:#6366f1;">View all</span></div>
+          <div style="padding:5px 8px;font-size:8px;border-bottom:1px solid #f9fafb;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px;align-items:center;color:#374151;"><span style="color:#6366f1;font-weight:600;">INV/001</span><span>Acme Corp</span><span>$12,500</span><span style="background:#dcfce7;color:#16a34a;font-size:6px;padding:1px 4px;border-radius:8px;font-weight:700;">FINAL</span></div>
+          <div style="padding:5px 8px;font-size:8px;border-bottom:1px solid #f9fafb;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px;align-items:center;color:#374151;"><span style="color:#6366f1;font-weight:600;">INV/002</span><span>Beta Ltd</span><span>€8,300</span><span style="background:#fef9c3;color:#ca8a04;font-size:6px;padding:1px 4px;border-radius:8px;font-weight:700;">DRAFT</span></div>
+          <div style="padding:5px 8px;font-size:8px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px;align-items:center;color:#374151;"><span style="color:#6366f1;font-weight:600;">INV/003</span><span>Gamma Co</span><span>£5,100</span><span style="background:#dcfce7;color:#16a34a;font-size:6px;padding:1px 4px;border-radius:8px;font-weight:700;">FINAL</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;flex:1;">
+            <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:4px;">Volume (12 mo)</div>
+            <div style="display:flex;align-items:flex-end;gap:1.5px;height:38px;">
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:25%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:40%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:55%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:45%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:70%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:60%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:80%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:65%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:90%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:75%"></div>
+              <div style="flex:1;background:#e0e7ff;border-radius:1px 1px 0 0;height:85%"></div>
+              <div style="flex:1;background:#6366f1;border-radius:1px 1px 0 0;height:100%"></div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:7px;flex:1;">
+            <div style="font-size:9px;font-weight:600;color:#111;margin-bottom:4px;">Top Destinations</div>
+            <div style="font-size:7px;color:#374151;margin-bottom:2px;display:flex;justify-content:space-between;">USA <strong>14</strong></div>
+            <div style="height:2px;background:#e5e7eb;border-radius:1px;margin-bottom:4px;"><div style="width:80%;height:100%;background:#6366f1;border-radius:1px;"></div></div>
+            <div style="font-size:7px;color:#374151;margin-bottom:2px;display:flex;justify-content:space-between;">UAE <strong>9</strong></div>
+            <div style="height:2px;background:#e5e7eb;border-radius:1px;"><div style="width:50%;height:100%;background:#818cf8;border-radius:1px;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Hero Revenue Banner</h3>
+      <p>Export value becomes a centrepiece hero in the top banner row alongside greeting + CTA. Stat cards shrink to compact pills. Revenue takes visual center stage.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Click your preferred layout. Mix-and-match notes welcome (e.g. "A layout but with activity feed from B").</p>
