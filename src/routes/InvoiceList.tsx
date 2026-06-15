@@ -26,7 +26,6 @@ import { PageLoader } from "@/components/PageLoader";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useInvoices, deleteInvoice, finalizeInvoice } from "@/hooks/useInvoices";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDb } from "@/lib/db";
 import { formatInvoiceDisplayDate, fmtAmount } from "@/lib/invoiceDocument";
 import {
   compareNumbers,
@@ -77,29 +76,10 @@ export function InvoiceList() {
   const [dateTo, setDateTo] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>("invoice_date");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
-  const [totals, setTotals] = useState<Record<number, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const canBulk = can("finalize_invoice") || can("delete_invoice");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const db = await getDb();
-        const rows = await db.select<{ id: number; total: number }[]>(`
-          SELECT invoice_id as id, COALESCE(SUM(total_amount), 0) as total
-          FROM invoice_items
-          GROUP BY invoice_id
-        `);
-        const map: Record<number, number> = {};
-        rows.forEach((r) => { map[r.id] = r.total; });
-        setTotals(map);
-      } catch {
-        /* DB not available outside Tauri */
-      }
-    })();
-  }, [invoices]);
 
   // Clear selection when filters change.
   useEffect(() => { setSelectedIds(new Set()); }, [statusFilter, globalFilter, dateFrom, dateTo]);
@@ -129,7 +109,7 @@ export function InvoiceList() {
         let cmp = 0;
         switch (sortKey) {
           case "amount":
-            cmp = compareNumbers(totals[a.id] ?? 0, totals[b.id] ?? 0);
+            cmp = compareNumbers(a.amount ?? 0, b.amount ?? 0);
             break;
           default:
             cmp = compareStrings(String(a[sortKey] ?? ""), String(b[sortKey] ?? ""));
@@ -138,7 +118,7 @@ export function InvoiceList() {
       });
     }
     return data;
-  }, [invoices, statusFilter, globalFilter, dateFrom, dateTo, sortKey, sortDir, totals]);
+  }, [invoices, statusFilter, globalFilter, dateFrom, dateTo, sortKey, sortDir]);
 
   const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id));
   const someSelected = selectedIds.size > 0;
@@ -394,7 +374,7 @@ export function InvoiceList() {
                         {inv.currency}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                        {totals[inv.id] !== undefined ? fmtAmount(totals[inv.id]) : "—"}
+                        {inv.amount !== undefined ? fmtAmount(inv.amount) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
                         <span

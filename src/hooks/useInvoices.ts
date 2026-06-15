@@ -56,7 +56,9 @@ export function useInvoices() {
         const db = await getDb();
         return db.select<Invoice[]>(
           `SELECT id, invoice_number, invoice_date, transport_mode,
-                  consignee_name, country_of_destination, currency, status, created_at
+                  consignee_name, country_of_destination, currency, status, created_at,
+                  (SELECT COALESCE(SUM(total_amount), 0)
+                     FROM invoice_items WHERE invoice_id = invoices.id) AS amount
            FROM invoices ORDER BY created_at DESC`
         );
       });
