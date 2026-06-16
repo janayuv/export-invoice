@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  FileText,
-  Calendar,
-  DollarSign,
-  Pencil,
-  ShoppingCart,
-  ArrowRight,
-} from "lucide-react";
+import { FileText, Calendar, DollarSign, Pencil, ShoppingCart, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -112,7 +105,13 @@ function monthTrend(thisMonth: number, lastMonth: number): React.ReactNode {
 export function Dashboard() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [stats, setStats] = useState<Stats>({ total: 0, thisMonth: 0, lastMonth: 0, drafts: 0, finals: 0 });
+  const [stats, setStats] = useState<Stats>({
+    total: 0,
+    thisMonth: 0,
+    lastMonth: 0,
+    drafts: 0,
+    finals: 0,
+  });
   const [recent, setRecent] = useState<RecentInvoice[]>([]);
   const [monthlyRaw, setMonthlyRaw] = useState<MonthCount[]>([]);
   const [destinations, setDestinations] = useState<DestCount[]>([]);
@@ -126,20 +125,18 @@ export function Dashboard() {
       try {
         const db = await getDb();
 
-        const [total] = await db.select<{ c: number }[]>(
-          "SELECT COUNT(*) as c FROM invoices"
-        );
+        const [total] = await db.select<{ c: number }[]>("SELECT COUNT(*) as c FROM invoices");
         const [thisMonth] = await db.select<{ c: number }[]>(
-          "SELECT COUNT(*) as c FROM invoices WHERE strftime('%Y-%m', invoice_date) = strftime('%Y-%m', 'now')"
+          "SELECT COUNT(*) as c FROM invoices WHERE strftime('%Y-%m', invoice_date) = strftime('%Y-%m', 'now')",
         );
         const [lastMonth] = await db.select<{ c: number }[]>(
-          "SELECT COUNT(*) as c FROM invoices WHERE strftime('%Y-%m', invoice_date) = strftime('%Y-%m', 'now', '-1 month')"
+          "SELECT COUNT(*) as c FROM invoices WHERE strftime('%Y-%m', invoice_date) = strftime('%Y-%m', 'now', '-1 month')",
         );
         const [drafts] = await db.select<{ c: number }[]>(
-          "SELECT COUNT(*) as c FROM invoices WHERE status='draft'"
+          "SELECT COUNT(*) as c FROM invoices WHERE status='draft'",
         );
         const [finals] = await db.select<{ c: number }[]>(
-          "SELECT COUNT(*) as c FROM invoices WHERE status='final'"
+          "SELECT COUNT(*) as c FROM invoices WHERE status='final'",
         );
         setStats({
           total: total.c,
@@ -199,7 +196,7 @@ export function Dashboard() {
           SELECT 'po', po_number, customer_name, status, created_at
           FROM purchase_orders
           ORDER BY created_at DESC
-          LIMIT 8
+          LIMIT 5
         `);
         setActivity(acts);
       } catch {
@@ -218,22 +215,19 @@ export function Dashboard() {
   const maxDest = Math.max(1, ...destinations.map((d) => d.count));
   const thisMonthPct = Math.min(
     100,
-    Math.round((stats.thisMonth / Math.max(stats.thisMonth, stats.lastMonth, 1)) * 100)
+    Math.round((stats.thisMonth / Math.max(stats.thisMonth, stats.lastMonth, 1)) * 100),
   );
   const totalPct = Math.min(100, Math.round((stats.total / 100) * 100));
 
   return (
     <div className="p-[18px] space-y-3 animate-fade-up">
-
       {/* ── Header row ── */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-[20px] font-black text-zinc-900 dark:text-zinc-50 leading-tight tracking-[-0.3px]">
             {getGreeting()}, {firstName}
           </h1>
-          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
-            {getFullDate()}
-          </p>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">{getFullDate()}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => navigate("/invoices")}>
@@ -251,7 +245,6 @@ export function Dashboard() {
 
       {/* ── 4 KPI cards ── */}
       <div className="grid grid-cols-4 gap-3">
-
         {/* Total Invoices */}
         <div
           onClick={() => navigate("/invoices")}
@@ -293,9 +286,7 @@ export function Dashboard() {
           <div className="text-[32px] font-black leading-none tracking-[-1px] text-indigo-500 mb-1">
             {stats.thisMonth}
           </div>
-          <div className="mb-1.5 h-4">
-            {monthTrend(stats.thisMonth, stats.lastMonth)}
-          </div>
+          <div className="mb-1.5 h-4">{monthTrend(stats.thisMonth, stats.lastMonth)}</div>
           <div className="h-[3px] rounded-full bg-zinc-100 dark:bg-zinc-800">
             <div
               className="h-full rounded-full bg-indigo-300 dark:bg-indigo-700"
@@ -326,8 +317,8 @@ export function Dashboard() {
                       i === 0
                         ? "text-[18px] text-green-700 dark:text-green-400"
                         : i === 1
-                        ? "text-[13px] text-zinc-600 dark:text-zinc-300"
-                        : "text-[11px] text-zinc-400 dark:text-zinc-500"
+                          ? "text-[13px] text-zinc-600 dark:text-zinc-300"
+                          : "text-[11px] text-zinc-400 dark:text-zinc-500",
                     )}
                   >
                     {ct.currency} {fmtAmount(ct.total)}
@@ -356,12 +347,10 @@ export function Dashboard() {
           </div>
           <p className="text-[10px] text-amber-500 font-semibold">⚡ pending finalization</p>
         </div>
-
       </div>
 
       {/* ── 3-column bottom grid ── */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "2fr 1.3fr 1fr" }}>
-
         {/* LEFT: Recent Invoices */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[10px] overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
@@ -389,7 +378,7 @@ export function Dashboard() {
                     key={h}
                     className={cn(
                       "text-[9px] font-bold uppercase tracking-[0.07em] text-zinc-400 dark:text-zinc-600",
-                      i === 2 ? "text-right" : ""
+                      i === 2 ? "text-right" : "",
                     )}
                   >
                     {h}
@@ -417,7 +406,7 @@ export function Dashboard() {
                       "ml-2 inline-flex items-center px-[7px] py-[2px] rounded-full text-[9px] font-bold uppercase tracking-wide whitespace-nowrap",
                       inv.status === "final"
                         ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
                     )}
                   >
                     {inv.status}
@@ -430,7 +419,6 @@ export function Dashboard() {
 
         {/* MIDDLE: Export Volume + By Destination */}
         <div className="flex flex-col gap-3">
-
           <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[10px] p-4 shadow-sm flex-1">
             <p className="text-[13px] font-bold text-zinc-900 dark:text-zinc-50 mb-3">
               Export Volume
@@ -445,20 +433,36 @@ export function Dashboard() {
               <line x1="0" y1="60" x2="220" y2="60" stroke="#f4f4f5" strokeWidth="1" />
               {monthlyData.map(({ label, count }, i) => {
                 const isCurrent = i === 11;
-                const heightPct = count === 0 ? 4 : Math.max(8, Math.round((count / maxMonth) * 100));
+                const heightPct =
+                  count === 0 ? 4 : Math.max(8, Math.round((count / maxMonth) * 100));
                 const barH = Math.round((heightPct / 100) * 70);
                 const x = i * 18 + 1;
                 const y = 70 - barH;
                 return (
                   <g key={label}>
-                    <rect x={x} y={y} width="14" height={barH} rx="2" fill={isCurrent ? "#6366f1" : "#e0e7ff"} />
-                    <title>{label}: {count}</title>
+                    <rect
+                      x={x}
+                      y={y}
+                      width="14"
+                      height={barH}
+                      rx="2"
+                      fill={isCurrent ? "#6366f1" : "#e0e7ff"}
+                    />
+                    <title>
+                      {label}: {count}
+                    </title>
                   </g>
                 );
               })}
-              <text x="8"   y="79" textAnchor="middle" fontSize="7" fill="#9ca3af">{monthlyData[0]?.label}</text>
-              <text x="109" y="79" textAnchor="middle" fontSize="7" fill="#9ca3af">{monthlyData[5]?.label}</text>
-              <text x="212" y="79" textAnchor="middle" fontSize="7" fill="#6366f1" fontWeight="600">{monthlyData[11]?.label}</text>
+              <text x="8" y="79" textAnchor="middle" fontSize="7" fill="#9ca3af">
+                {monthlyData[0]?.label}
+              </text>
+              <text x="109" y="79" textAnchor="middle" fontSize="7" fill="#9ca3af">
+                {monthlyData[5]?.label}
+              </text>
+              <text x="212" y="79" textAnchor="middle" fontSize="7" fill="#6366f1" fontWeight="600">
+                {monthlyData[11]?.label}
+              </text>
             </svg>
           </div>
 
@@ -491,14 +495,11 @@ export function Dashboard() {
               </div>
             )}
           </div>
-
         </div>
 
         {/* RIGHT: Activity Feed */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[10px] p-4 shadow-sm">
-          <p className="text-[13px] font-bold text-zinc-900 dark:text-zinc-50 mb-4">
-            Activity
-          </p>
+          <p className="text-[13px] font-bold text-zinc-900 dark:text-zinc-50 mb-4">Activity</p>
           {activity.length === 0 ? (
             <p className="text-[11px] text-zinc-400 dark:text-zinc-600">No activity yet</p>
           ) : (
@@ -509,14 +510,14 @@ export function Dashboard() {
                   ev.entity === "po"
                     ? "bg-amber-400"
                     : ev.status === "final"
-                    ? "bg-emerald-500"
-                    : "bg-indigo-500";
+                      ? "bg-emerald-500"
+                      : "bg-indigo-500";
                 const label =
                   ev.entity === "po"
                     ? `${ev.ref} created`
                     : ev.status === "final"
-                    ? `${ev.ref} finalized`
-                    : `${ev.ref} created`;
+                      ? `${ev.ref} finalized`
+                      : `${ev.ref} created`;
                 return (
                   <div key={`${ev.entity}-${ev.ref}-${i}`} className="flex gap-2.5">
                     <div className="flex flex-col items-center flex-shrink-0 w-[7px]">
@@ -542,9 +543,7 @@ export function Dashboard() {
             </div>
           )}
         </div>
-
       </div>
-
     </div>
   );
 }

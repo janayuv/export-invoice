@@ -8,14 +8,12 @@ import { cn } from "@/lib/utils";
 import { type User, getActiveUsers, verifyPin, createUser } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 
-const AVATAR_COLORS = [
-  "#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6",
-];
+const AVATAR_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6"];
 
 const ROLE_BADGE: Record<string, string> = {
-  admin:    "bg-red-500/15 text-red-400",
+  admin: "bg-red-500/15 text-red-400",
   operator: "bg-blue-500/15 text-blue-400",
-  viewer:   "bg-zinc-500/20 text-zinc-400",
+  viewer: "bg-zinc-500/20 text-zinc-400",
 };
 
 // null = invisible spacer (replaces the old "C" clear key)
@@ -58,15 +56,30 @@ export function LoginScreen() {
   const submitRef = useRef<(pinOverride?: string) => void>(() => {});
 
   useEffect(() => {
-    getActiveUsers().then((u) => { setUsers(u); setUsersLoaded(true); });
+    getActiveUsers().then((u) => {
+      setUsers(u);
+      setUsersLoaded(true);
+    });
   }, []);
 
   async function handleCreateAdmin() {
     const trimmedName = adminName.trim();
-    if (!trimmedName) { toast.error("Name is required"); return; }
-    if (adminPin.length < 4) { toast.error("PIN must be at least 4 digits"); return; }
-    if (!/^\d+$/.test(adminPin)) { toast.error("PIN must be digits only"); return; }
-    if (adminPin !== adminConfirmPin) { toast.error("PINs do not match"); return; }
+    if (!trimmedName) {
+      toast.error("Name is required");
+      return;
+    }
+    if (adminPin.length < 4) {
+      toast.error("PIN must be at least 4 digits");
+      return;
+    }
+    if (!/^\d+$/.test(adminPin)) {
+      toast.error("PIN must be digits only");
+      return;
+    }
+    if (adminPin !== adminConfirmPin) {
+      toast.error("PINs do not match");
+      return;
+    }
     setIsCreating(true);
     try {
       await createUser(trimmedName, adminPin, "admin");
@@ -86,7 +99,10 @@ export function LoginScreen() {
   useEffect(() => {
     if (!lockoutUntil) return;
     const ms = parseLockoutDate(lockoutUntil).getTime() - Date.now();
-    if (ms <= 0) { setLockoutUntil(null); return; }
+    if (ms <= 0) {
+      setLockoutUntil(null);
+      return;
+    }
     const timer = setTimeout(() => setLockoutUntil(null), ms);
     return () => clearTimeout(timer);
   }, [lockoutUntil]);
@@ -124,7 +140,7 @@ export function LoginScreen() {
         toast.error(
           rem === 1
             ? "Incorrect PIN — 1 attempt left before lockout"
-            : `Incorrect PIN — ${rem} attempts left`
+            : `Incorrect PIN — ${rem} attempts left`,
         );
         setTimeout(() => setShake(false), 600);
       }
@@ -151,6 +167,29 @@ export function LoginScreen() {
   function backspace() {
     setPin((p) => p.slice(0, -1));
   }
+
+  // Physical-keyboard PIN entry: digits append, Backspace deletes, Enter submits.
+  // Ignored while typing in a form field (e.g. the create-admin inputs).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (!selectedId || lockoutUntil) return;
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault();
+        pressDigit(e.key);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        backspace();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        submitRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, lockoutUntil, pin]);
 
   const isLocked = lockoutUntil != null;
   const canSubmit = !!selectedId && pin.length >= 4 && !isVerifying && !isLocked;
@@ -195,11 +234,7 @@ export function LoginScreen() {
                 style={{ background: "#09090b", border: "1px solid #27272a" }}
               >
                 <p className="text-[13px] text-zinc-400">No user accounts found.</p>
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setShowCreateAdmin(true)}
-                >
+                <Button size="sm" className="w-full" onClick={() => setShowCreateAdmin(true)}>
                   Create Admin Account
                 </Button>
               </div>
@@ -210,7 +245,9 @@ export function LoginScreen() {
                 </p>
                 <div className="space-y-2">
                   <div className="space-y-1">
-                    <Label htmlFor="ca-name" className="text-[12px] text-zinc-400">Name</Label>
+                    <Label htmlFor="ca-name" className="text-[12px] text-zinc-400">
+                      Name
+                    </Label>
                     <Input
                       id="ca-name"
                       placeholder="e.g. S.DINESH"
@@ -220,7 +257,9 @@ export function LoginScreen() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="ca-pin" className="text-[12px] text-zinc-400">PIN (4–6 digits)</Label>
+                    <Label htmlFor="ca-pin" className="text-[12px] text-zinc-400">
+                      PIN (4–6 digits)
+                    </Label>
                     <Input
                       id="ca-pin"
                       type="password"
@@ -233,7 +272,9 @@ export function LoginScreen() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="ca-confirm" className="text-[12px] text-zinc-400">Confirm PIN</Label>
+                    <Label htmlFor="ca-confirm" className="text-[12px] text-zinc-400">
+                      Confirm PIN
+                    </Label>
                     <Input
                       id="ca-confirm"
                       type="password"
@@ -270,118 +311,122 @@ export function LoginScreen() {
             )}
           </div>
         ) : (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
-            Select User
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {users.map((u, idx) => {
-              const isSelected = String(u.id) === selectedId;
-              const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
-              const initial = u.name.trim()[0]?.toUpperCase() ?? "?";
-              const firstName = u.name.trim().split(/\s+/)[0];
-              return (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => handleUserSelect(String(u.id))}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all duration-100 text-left"
-                  style={{
-                    background: isSelected ? "rgba(129,140,248,0.13)" : "#09090b",
-                    border: isSelected ? "1px solid #818cf8" : "1px solid #27272a",
-                  }}
-                >
-                  {/* Letter avatar */}
-                  <div
-                    className="flex items-center justify-center shrink-0 rounded-full text-[12px] font-bold text-white"
-                    style={{ width: 30, height: 30, background: avatarColor }}
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">
+              Select User
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {users.map((u, idx) => {
+                const isSelected = String(u.id) === selectedId;
+                const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+                const initial = u.name.trim()[0]?.toUpperCase() ?? "?";
+                const firstName = u.name.trim().split(/\s+/)[0];
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => handleUserSelect(String(u.id))}
+                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all duration-100 text-left"
+                    style={{
+                      background: isSelected ? "rgba(129,140,248,0.13)" : "#09090b",
+                      border: isSelected ? "1px solid #818cf8" : "1px solid #27272a",
+                    }}
                   >
-                    {initial}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-zinc-100 truncate">{firstName}</p>
-                    <span
-                      className={cn(
-                        "inline-flex items-center px-1 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
-                        ROLE_BADGE[u.role] ?? "bg-zinc-500/20 text-zinc-400"
-                      )}
+                    {/* Letter avatar */}
+                    <div
+                      className="flex items-center justify-center shrink-0 rounded-full text-[12px] font-bold text-white"
+                      style={{ width: 30, height: 30, background: avatarColor }}
                     >
-                      {u.role}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+                      {initial}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-zinc-100 truncate">
+                        {firstName}
+                      </p>
+                      <span
+                        className={cn(
+                          "inline-flex items-center px-1 py-px rounded text-[9px] font-semibold uppercase tracking-wide",
+                          ROLE_BADGE[u.role] ?? "bg-zinc-500/20 text-zinc-400",
+                        )}
+                      >
+                        {u.role}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
         )}
 
         {/* ── PIN + keypad + sign-in: hidden when no users exist ── */}
-        {(!usersLoaded || users.length > 0) && (<>
-        {/* ── PIN dots ── */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">PIN</p>
-          <div className={cn("flex justify-center gap-3 py-1", shake && "animate-shake")}>
-            {Array.from({ length: 6 }).map((_, i) => (
+        {(!usersLoaded || users.length > 0) && (
+          <>
+            {/* ── PIN dots ── */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-zinc-500">PIN</p>
+              <div className={cn("flex justify-center gap-3 py-1", shake && "animate-shake")}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-full transition-all duration-150"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      border: i < pin.length ? "2px solid #818cf8" : "2px solid #3f3f46",
+                      background: i < pin.length ? "#818cf8" : "transparent",
+                      transform: i < pin.length ? "scale(1.1)" : "scale(1)",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ── Lockout banner ── */}
+            {isLocked && (
               <div
-                key={i}
-                className="rounded-full transition-all duration-150"
+                className="rounded-lg px-3 py-2 text-[12px] text-red-400 text-center"
                 style={{
-                  width: 12,
-                  height: 12,
-                  border: i < pin.length ? "2px solid #818cf8" : "2px solid #3f3f46",
-                  background: i < pin.length ? "#818cf8" : "transparent",
-                  transform: i < pin.length ? "scale(1.1)" : "scale(1)",
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.25)",
                 }}
-              />
-            ))}
-          </div>
-        </div>
+              >
+                Account locked until{" "}
+                {parseLockoutDate(lockoutUntil!).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
+            )}
 
-        {/* ── Lockout banner ── */}
-        {isLocked && (
-          <div
-            className="rounded-lg px-3 py-2 text-[12px] text-red-400 text-center"
-            style={{
-              background: "rgba(239,68,68,0.1)",
-              border: "1px solid rgba(239,68,68,0.25)",
-            }}
-          >
-            Account locked until{" "}
-            {parseLockoutDate(lockoutUntil!).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </div>
+            {/* ── Keypad ── */}
+            <div className="flex justify-center">
+              <div className="grid grid-cols-3 gap-2" style={{ width: 224 }}>
+                {PAD_KEYS.flat().map((key, idx) => {
+                  // null = invisible spacer in position [3][0] (old "C" slot)
+                  if (key === null) return <div key={`pad-${idx}`} />;
+                  return (
+                    <button
+                      key={`pad-${idx}`}
+                      type="button"
+                      onClick={() => (key === "⌫" ? backspace() : pressDigit(key))}
+                      disabled={!selectedId || isLocked}
+                      className="flex items-center justify-center h-12 rounded-lg text-[15px] font-semibold text-zinc-100 transition-all duration-[80ms] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed select-none"
+                      style={{ background: "#27272a", border: "1px solid #3f3f46" }}
+                    >
+                      {key === "⌫" ? <Delete size={15} /> : key}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Sign In ── */}
+            <Button className="w-full" onClick={() => submit()} disabled={!canSubmit}>
+              {isVerifying ? "Verifying…" : "Sign In"}
+            </Button>
+          </>
         )}
-
-        {/* ── Keypad ── */}
-        <div className="flex justify-center">
-          <div className="grid grid-cols-3 gap-2" style={{ width: 224 }}>
-            {PAD_KEYS.flat().map((key, idx) => {
-              // null = invisible spacer in position [3][0] (old "C" slot)
-              if (key === null) return <div key={`pad-${idx}`} />;
-              return (
-                <button
-                  key={`pad-${idx}`}
-                  type="button"
-                  onClick={() => (key === "⌫" ? backspace() : pressDigit(key))}
-                  disabled={!selectedId || isLocked}
-                  className="flex items-center justify-center h-12 rounded-lg text-[15px] font-semibold text-zinc-100 transition-all duration-[80ms] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed select-none"
-                  style={{ background: "#27272a", border: "1px solid #3f3f46" }}
-                >
-                  {key === "⌫" ? <Delete size={15} /> : key}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Sign In ── */}
-        <Button className="w-full" onClick={() => submit()} disabled={!canSubmit}>
-          {isVerifying ? "Verifying…" : "Sign In"}
-        </Button>
-        </>)}
       </div>
     </div>
   );
