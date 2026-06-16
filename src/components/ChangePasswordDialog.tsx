@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { KeyRound } from "lucide-react";
 import { changePin } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";

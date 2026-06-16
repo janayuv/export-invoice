@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Edit, CheckCircle, Trash2, FileDown, FileSpreadsheet, ArrowLeft, Copy, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InvoicePreview } from "@/components/InvoicePreview";

@@ -417,7 +417,7 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <Toaster richColors position="top-right" />
+      <Toaster position="top-left" />
     </div>
   );
 }

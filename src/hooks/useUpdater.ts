@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 export type UpdaterPhase =
   | { phase: "idle" }

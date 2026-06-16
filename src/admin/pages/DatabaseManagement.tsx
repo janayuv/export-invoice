@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   Database,
   HardDrive,

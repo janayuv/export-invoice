@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ArrowLeft, Edit, CheckCircle, XCircle, Trash2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/PageLoader";
