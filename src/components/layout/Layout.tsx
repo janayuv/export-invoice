@@ -32,6 +32,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 
 const ROLE_BADGE: Record<string, string> = {
   admin: "bg-amber-400/15 text-amber-400",
@@ -394,6 +395,7 @@ export function Layout() {
                       {currentUser.role}
                     </span>
                   </div>
+                  <ChangePasswordDialog collapsed={false} />
                   <button
                     type="button"
                     onClick={logout}
