@@ -44,6 +44,15 @@ jobs:
       - name: Frontend production build
         run: npm run build
 
+      # Preflight: fail the release if the signing secret does not match the
+      # pubkey baked into the app. Prevents shipping artifacts whose .sig the
+      # installed updater would reject ("signature created with a different key").
+      - name: Verify updater signing key matches embedded pubkey
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: node scripts/verify-updater-key.mjs
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
