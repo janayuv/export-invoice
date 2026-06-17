@@ -92,7 +92,9 @@ export function DatabaseManagement() {
         </div>
         <div>
           <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Database Management</h1>
-          <p className="text-xs text-zinc-500">Overview, backup, browse, and audit your database.</p>
+          <p className="text-xs text-zinc-500">
+            Overview, backup, browse, and audit your database.
+          </p>
         </div>
       </div>
 
@@ -146,7 +148,9 @@ function OverviewTab() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <div className="rounded-xl ring-1 ring-foreground/10 bg-card p-4">
-        <h2 className="text-sm font-semibold mb-3 text-zinc-900 dark:text-zinc-50">Table Record Counts</h2>
+        <h2 className="text-sm font-semibold mb-3 text-zinc-900 dark:text-zinc-50">
+          Table Record Counts
+        </h2>
         <Table>
           <TableHeader>
             <TableRow>
@@ -158,7 +162,9 @@ function OverviewTab() {
             {tables.map((t) => (
               <TableRow key={t.table_name}>
                 <TableCell className="font-mono text-xs">{t.table_name}</TableCell>
-                <TableCell className="text-right tabular-nums">{t.record_count.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {t.record_count.toLocaleString()}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -166,7 +172,9 @@ function OverviewTab() {
       </div>
 
       <div className="rounded-xl ring-1 ring-foreground/10 bg-card p-4">
-        <h2 className="text-sm font-semibold mb-3 text-zinc-900 dark:text-zinc-50">Recent Activity</h2>
+        <h2 className="text-sm font-semibold mb-3 text-zinc-900 dark:text-zinc-50">
+          Recent Activity
+        </h2>
         {recent.length === 0 ? (
           <p className="text-xs text-zinc-500">No activity recorded yet.</p>
         ) : (
@@ -230,12 +238,28 @@ function BackupTab() {
   const [gdriveLastUpload, setGdriveLastUpload] = useState<GDriveBackupResult | null>(null);
   const [gdriveFiles, setGdriveFiles] = useState<GDriveFile[]>([]);
   const [gdriveLoadingFiles, setGdriveLoadingFiles] = useState(false);
-  const [oauthConfig, setOauthConfig] = useState<OAuthConfigStatus>({ client_id: "", has_secret: false });
+  // Passphrase modal state. Passphrases live ONLY in transient React state here —
+  // never written to localStorage/SQLite and never logged. Cleared after the
+  // backup/restore completes or the modal is cancelled.
+  const [showBackupPass, setShowBackupPass] = useState(false);
+  const [restorePrompt, setRestorePrompt] = useState<{ fileId: string; fileName: string } | null>(
+    null,
+  );
+  const [restorePassError, setRestorePassError] = useState<string | null>(null);
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
+  const [oauthConfig, setOauthConfig] = useState<OAuthConfigStatus>({
+    client_id: "",
+    has_secret: false,
+  });
   const [savingConfig, setSavingConfig] = useState(false);
 
   useEffect(() => {
-    invoke<GDriveConnectStatus>("gdrive_get_status").then(setGdrive).catch(() => {});
-    invoke<OAuthConfigStatus>("gdrive_get_oauth_config").then(setOauthConfig).catch(() => {});
+    invoke<GDriveConnectStatus>("gdrive_get_status")
+      .then(setGdrive)
+      .catch(() => {});
+    invoke<OAuthConfigStatus>("gdrive_get_oauth_config")
+      .then(setOauthConfig)
+      .catch(() => {});
   }, []);
 
   const handleSaveOAuthConfig = async (clientId: string, clientSecret: string) => {
@@ -301,11 +325,18 @@ function BackupTab() {
     return false;
   };
 
-  const handleGdriveBackup = async () => {
+  // Open the passphrase modal; the actual upload runs in runGdriveBackup once the
+  // user confirms a passphrase. New Drive backups are V2 (passphrase-encrypted).
+  const handleGdriveBackup = () => setShowBackupPass(true);
+
+  // PASSPHRASE (frontend → Rust): the confirmed passphrase is forwarded as a
+  // one-shot `invoke` argument and then dropped. It is never stored or logged.
+  const runGdriveBackup = async (passphrase: string) => {
+    setShowBackupPass(false);
     setGdriveUploading(true);
     setGdriveLastUpload(null);
     try {
-      const result = await invoke<GDriveBackupResult>("gdrive_backup_and_upload");
+      const result = await invoke<GDriveBackupResult>("gdrive_backup_and_upload", { passphrase });
       setGdriveLastUpload(result);
       toast.success(`Uploaded: ${result.file_name}`);
       loadGdriveFiles();
@@ -313,6 +344,60 @@ function BackupTab() {
       if (!handleScopeError(err)) toast.error(`Drive backup failed: ${stripErrPrefix(err)}`);
     } finally {
       setGdriveUploading(false);
+    }
+  };
+
+  // First restore attempt: pass no passphrase. The backend decrypts V1/plain
+  // backups directly; for a V2 backup it returns the `ERR_PASSPHRASE_REQUIRED`
+  // marker, which opens the passphrase modal so the user can retry — no restart
+  // and no re-selection needed.
+  const startGdriveRestore = async (fileId: string, fileName: string) => {
+    if (
+      !confirm(
+        `Restore from "${fileName}"?\n\nThis stages the restore — the app must restart to apply it.`,
+      )
+    )
+      return;
+    try {
+      await invoke("gdrive_download_and_stage_restore", { fileId, fileName, passphrase: null });
+      toast.success("Backup staged — restart the app to complete restore");
+    } catch (err) {
+      if (String(err).includes("ERR_PASSPHRASE_REQUIRED")) {
+        // V2 backup detected → prompt for the passphrase and retry in place.
+        setRestorePassError(null);
+        setRestorePrompt({ fileId, fileName });
+        return;
+      }
+      if (!handleScopeError(err)) toast.error(`Restore failed: ${stripErrPrefix(err)}`);
+    }
+  };
+
+  // Modal submit: retry the same restore with the entered passphrase. On a wrong
+  // passphrase / corrupt / version error the modal stays open with the message so
+  // the user can re-enter without restarting the whole restore flow.
+  // PASSPHRASE (frontend → Rust): forwarded as a one-shot arg, never stored/logged.
+  const submitRestorePassphrase = async (passphrase: string) => {
+    if (!restorePrompt) return;
+    setRestoreSubmitting(true);
+    setRestorePassError(null);
+    try {
+      await invoke("gdrive_download_and_stage_restore", {
+        fileId: restorePrompt.fileId,
+        fileName: restorePrompt.fileName,
+        passphrase,
+      });
+      setRestorePrompt(null); // clears the modal; passphrase state is dropped
+      toast.success("Backup staged — restart the app to complete restore");
+    } catch (err) {
+      if (handleScopeError(err)) {
+        setRestorePrompt(null);
+        return;
+      }
+      // Keep the modal open and show the reason (wrong passphrase / corrupt /
+      // unsupported version) so the user can retry.
+      setRestorePassError(stripErrPrefix(err));
+    } finally {
+      setRestoreSubmitting(false);
     }
   };
 
@@ -417,7 +502,12 @@ function BackupTab() {
           title="Restore Backup"
           desc="Validate a backup file and stage it. Takes effect after restart."
           button={
-            <Button onClick={handleRestore} disabled={restoring} variant="outline" className="w-full">
+            <Button
+              onClick={handleRestore}
+              disabled={restoring}
+              variant="outline"
+              className="w-full"
+            >
               {restoring ? "Validating…" : "Restore…"}
             </Button>
           }
@@ -428,7 +518,12 @@ function BackupTab() {
           title="Verify Backup"
           desc="Check the integrity and SHA-256 hash of a backup file."
           button={
-            <Button onClick={handleVerify} disabled={verifying} variant="outline" className="w-full">
+            <Button
+              onClick={handleVerify}
+              disabled={verifying}
+              variant="outline"
+              className="w-full"
+            >
               {verifying ? "Verifying…" : "Verify…"}
             </Button>
           }
@@ -449,16 +544,114 @@ function BackupTab() {
         onDisconnect={handleGdriveDisconnect}
         onBackup={handleGdriveBackup}
         onListFiles={loadGdriveFiles}
-        onRestore={async (fileId, fileName) => {
-          if (!confirm(`Restore from "${fileName}"?\n\nThis stages the restore — the app must restart to apply it.`)) return;
-          try {
-            await invoke("gdrive_download_and_stage_restore", { fileId, fileName });
-            toast.success("Backup staged — restart the app to complete restore");
-          } catch (err) {
-            toast.error(`Restore failed: ${stripErrPrefix(err)}`);
-          }
-        }}
+        onRestore={startGdriveRestore}
       />
+      {showBackupPass && (
+        <PassphraseModal
+          title="Encrypt Drive backup"
+          description="Choose a passphrase to encrypt this backup. You'll need it to restore on any machine. It cannot be recovered if lost."
+          confirmField
+          submitLabel="Create backup"
+          submitting={gdriveUploading}
+          onSubmit={runGdriveBackup}
+          onCancel={() => setShowBackupPass(false)}
+        />
+      )}
+      {restorePrompt && (
+        <PassphraseModal
+          title="Enter backup passphrase"
+          description={`"${restorePrompt.fileName}" is passphrase-protected. Enter the passphrase used when it was created.`}
+          submitLabel="Restore"
+          submitting={restoreSubmitting}
+          error={restorePassError}
+          onSubmit={submitRestorePassphrase}
+          onCancel={() => {
+            setRestorePrompt(null);
+            setRestorePassError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Passphrase entry modal. Used for both backup (with a confirm field) and restore
+// (single field). The passphrase is held only in this component's local state and
+// is passed to the parent's onSubmit callback; it is never persisted or logged,
+// and the local state is discarded when the modal unmounts on close.
+function PassphraseModal({
+  title,
+  description,
+  confirmField = false,
+  submitLabel,
+  submitting = false,
+  error = null,
+  onSubmit,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  confirmField?: boolean;
+  submitLabel: string;
+  submitting?: boolean;
+  error?: string | null;
+  onSubmit: (passphrase: string) => void;
+  onCancel: () => void;
+}) {
+  const [pass, setPass] = useState("");
+  const [confirm2, setConfirm2] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const MIN_LEN = 8; // mirrors backend MIN_BACKUP_PASSPHRASE_LEN
+
+  const handleSubmit = () => {
+    if (pass.length < MIN_LEN) {
+      setLocalError(`Passphrase must be at least ${MIN_LEN} characters.`);
+      return;
+    }
+    if (confirmField && pass !== confirm2) {
+      setLocalError("Passphrases do not match.");
+      return;
+    }
+    setLocalError(null);
+    onSubmit(pass);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-card p-5 ring-1 ring-foreground/10 flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{title}</h3>
+        <p className="text-xs text-muted-foreground">{description}</p>
+        <input
+          type="password"
+          autoFocus
+          autoComplete="new-password"
+          placeholder="Passphrase"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !confirmField && handleSubmit()}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        />
+        {confirmField && (
+          <input
+            type="password"
+            autoComplete="new-password"
+            placeholder="Confirm passphrase"
+            value={confirm2}
+            onChange={(e) => setConfirm2(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        )}
+        {(localError || error) && <p className="text-xs text-red-500">{localError || error}</p>}
+        <div className="flex gap-2 justify-end pt-1">
+          <Button variant="outline" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Working…" : submitLabel}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -548,12 +741,14 @@ function GDriveCard({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <CloudUpload size={16} className="text-indigo-400" />
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Google Drive Backup</h3>
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            Google Drive Backup
+          </h3>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setShowConfigForm(v => !v)}
+            onClick={() => setShowConfigForm((v) => !v)}
             className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           >
             {showConfigForm ? "Hide setup" : "OAuth setup"}
@@ -575,15 +770,19 @@ function GDriveCard({
         <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 p-3 space-y-2.5">
           <p className="text-[11px] text-zinc-500 leading-relaxed">
             Create a <strong>Desktop app</strong> OAuth 2.0 client in{" "}
-            <span className="font-mono">Google Cloud Console → APIs &amp; Services → Credentials</span>,
-            enable the Drive API, then paste the credentials below.
+            <span className="font-mono">
+              Google Cloud Console → APIs &amp; Services → Credentials
+            </span>
+            , enable the Drive API, then paste the credentials below.
           </p>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Client ID</label>
+            <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
+              Client ID
+            </label>
             <input
               type="text"
               value={clientId}
-              onChange={e => setClientId(e.target.value)}
+              onChange={(e) => setClientId(e.target.value)}
               placeholder="xxxx.apps.googleusercontent.com"
               className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2.5 py-1.5 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
             />
@@ -597,13 +796,17 @@ function GDriveCard({
               <input
                 type={showSecret ? "text" : "password"}
                 value={clientSecret}
-                onChange={e => setClientSecret(e.target.value)}
-                placeholder={oauthConfig.has_secret ? "••••••••  (saved — leave blank to keep)" : "Paste secret or leave empty"}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder={
+                  oauthConfig.has_secret
+                    ? "••••••••  (saved — leave blank to keep)"
+                    : "Paste secret or leave empty"
+                }
                 className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2.5 py-1.5 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 pr-14"
               />
               <button
                 type="button"
-                onClick={() => setShowSecret(v => !v)}
+                onClick={() => setShowSecret((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 hover:text-zinc-600"
               >
                 {showSecret ? "hide" : "show"}
@@ -625,15 +828,19 @@ function GDriveCard({
         /* ── Not connected ── */
         <div className="space-y-3">
           <p className="text-xs text-zinc-500">
-            Connect your Google account to back up the database directly to Google Drive.
-            Uses OAuth 2.0 with PKCE — no password stored, only a revocable access token.
+            Connect your Google account to back up the database directly to Google Drive. Uses OAuth
+            2.0 with PKCE — no password stored, only a revocable access token.
           </p>
           {connecting && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
               Browser opened — complete authorization then return here…
             </p>
           )}
-          <Button onClick={onConnect} disabled={connecting || !oauthConfig.client_id} className="w-full">
+          <Button
+            onClick={onConnect}
+            disabled={connecting || !oauthConfig.client_id}
+            className="w-full"
+          >
             {connecting ? "Waiting for authorization…" : "Connect Google Drive"}
           </Button>
           {!oauthConfig.client_id && (
@@ -659,7 +866,8 @@ function GDriveCard({
                 <span className="truncate">{lastUpload.file_name}</span>
               </div>
               <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                {Math.round(lastUpload.size_bytes / 1024)} KB · SHA-256: {lastUpload.sha256.slice(0, 12)}…
+                {Math.round(lastUpload.size_bytes / 1024)} KB · SHA-256:{" "}
+                {lastUpload.sha256.slice(0, 12)}…
               </div>
               {lastUpload.web_view_link && (
                 <a
@@ -677,7 +885,9 @@ function GDriveCard({
           {/* Recent backups list */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide">Recent Backups</span>
+              <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+                Recent Backups
+              </span>
               <button
                 type="button"
                 onClick={onListFiles}
@@ -694,14 +904,24 @@ function GDriveCard({
             ) : (
               <ul className="space-y-1 max-h-40 overflow-y-auto">
                 {files.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
+                  <li
+                    key={f.id}
+                    className="flex items-center justify-between gap-2 text-[11px] py-0.5"
+                  >
                     <span className="text-zinc-600 dark:text-zinc-400 truncate" title={f.name}>
                       {f.name}
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0 text-zinc-400">
                       {f.size_bytes && <span>{Math.round(Number(f.size_bytes) / 1024)} KB</span>}
                       {f.web_view_link && (
-                        <a href={f.web_view_link} target="_blank" rel="noreferrer" className="hover:text-indigo-400">↗</a>
+                        <a
+                          href={f.web_view_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-indigo-400"
+                        >
+                          ↗
+                        </a>
                       )}
                       <button
                         type="button"
@@ -912,7 +1132,9 @@ function AuditTab() {
                 const Icon = MODULE_ICON[a.module] ?? ScrollText;
                 return (
                   <TableRow key={a.id}>
-                    <TableCell className="text-xs text-zinc-500 whitespace-nowrap">{a.occurred_at}</TableCell>
+                    <TableCell className="text-xs text-zinc-500 whitespace-nowrap">
+                      {a.occurred_at}
+                    </TableCell>
                     <TableCell className="text-xs">{a.user_name || "system"}</TableCell>
                     <TableCell className="text-xs font-medium">{a.action}</TableCell>
                     <TableCell className="text-xs">
@@ -933,10 +1155,20 @@ function AuditTab() {
         <span className="text-xs text-zinc-500 tabular-nums">
           {total.toLocaleString()} entries · Page {page + 1} of {totalPages}
         </span>
-        <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page === 0}
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+        >
           <ChevronLeft size={14} />
         </Button>
-        <Button variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page + 1 >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
           <ChevronRight size={14} />
         </Button>
       </div>
