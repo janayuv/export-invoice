@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Calendar, DollarSign, Pencil, ShoppingCart, ArrowRight } from "lucide-react";
+import {
+  FileText,
+  Calendar,
+  DollarSign,
+  Pencil,
+  ShoppingCart,
+  ArrowRight,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,6 +55,16 @@ interface ActivityEvent {
   name: string;
   status: string;
   created_at: string;
+}
+
+interface PendingShipment {
+  id: number;
+  invoice_number: string;
+  customer_name: string;
+  invoice_date: string;
+  shipping_bill_no: string;
+  bl_awb_no: string;
+  days_pending: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -117,6 +135,7 @@ export function Dashboard() {
   const [destinations, setDestinations] = useState<DestCount[]>([]);
   const [currencyTotals, setCurrencyTotals] = useState<CurrencyTotal[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [pendingShipments, setPendingShipments] = useState<PendingShipment[]>([]);
 
   const firstName = currentUser?.name.split(" ")[0] ?? "there";
 
@@ -199,6 +218,20 @@ export function Dashboard() {
           LIMIT 5
         `);
         setActivity(acts);
+
+        // Entries pending shipping follow-up: 10+ days since invoice date but
+        // shipping bill no and/or BL/AWB no still not entered.
+        const pending = await db.select<PendingShipment[]>(`
+          SELECT id, invoice_number, customer_name, invoice_date,
+                 shipping_bill_no, bl_awb_no,
+                 CAST(julianday('now') - julianday(invoice_date) AS INTEGER) as days_pending
+          FROM entries
+          WHERE invoice_date != ''
+            AND julianday('now') - julianday(invoice_date) >= 10
+            AND (TRIM(shipping_bill_no) = '' OR TRIM(bl_awb_no) = '')
+          ORDER BY days_pending DESC
+        `);
+        setPendingShipments(pending);
       } catch {
         // DB not available outside the Tauri app
       }
@@ -543,6 +576,94 @@ export function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Shipping Follow-up: entries 10+ days old missing shipping/BL no ── */}
+      <div className="bg-white dark:bg-zinc-900 border border-red-200 dark:border-red-900/50 rounded-[10px] overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-500" />
+            <p className="text-[13px] font-bold text-zinc-900 dark:text-zinc-50">
+              Shipping Follow-up
+            </p>
+            {pendingShipments.length > 0 && (
+              <span className="inline-flex items-center px-[7px] py-[1px] rounded-full text-[9px] font-bold bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400">
+                {pendingShipments.length}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => navigate("/entries")}
+            className="flex items-center gap-0.5 text-[11px] text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+          >
+            View all <ArrowRight size={11} />
+          </button>
+        </div>
+
+        {pendingShipments.length === 0 ? (
+          <div className="px-4 py-8 text-center text-[12px] text-zinc-400 dark:text-zinc-600">
+            All entries have shipping &amp; BL numbers up to date
+          </div>
+        ) : (
+          <>
+            <div
+              className="grid px-4 py-2 border-b border-zinc-100 dark:border-zinc-800"
+              style={{ gridTemplateColumns: "1.2fr 1.6fr 1fr 1fr 0.8fr" }}
+            >
+              {(["Invoice No", "Customer", "Shipping No", "BL/AWB No", "Pending"] as const).map(
+                (h, i) => (
+                  <div
+                    key={h}
+                    className={cn(
+                      "text-[9px] font-bold uppercase tracking-[0.07em] text-zinc-400 dark:text-zinc-600",
+                      i === 4 ? "text-right" : "",
+                    )}
+                  >
+                    {h}
+                  </div>
+                ),
+              )}
+            </div>
+            {pendingShipments.map((e) => (
+              <div
+                key={e.id}
+                onClick={() => navigate(`/entries/${e.id}/edit`)}
+                className="grid items-center px-4 py-2.5 border-b border-zinc-50 dark:border-zinc-800/60 last:border-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-75"
+                style={{ gridTemplateColumns: "1.2fr 1.6fr 1fr 1fr 0.8fr" }}
+              >
+                <span className="font-mono text-[11px] font-bold text-indigo-500 truncate">
+                  {e.invoice_number || "—"}
+                </span>
+                <span className="text-[11px] text-zinc-600 dark:text-zinc-300 truncate pr-2">
+                  {e.customer_name || "—"}
+                </span>
+                <span
+                  className={cn(
+                    "text-[11px] truncate pr-2",
+                    e.shipping_bill_no.trim()
+                      ? "text-zinc-600 dark:text-zinc-300 font-mono"
+                      : "text-red-500 font-semibold",
+                  )}
+                >
+                  {e.shipping_bill_no.trim() || "missing"}
+                </span>
+                <span
+                  className={cn(
+                    "text-[11px] truncate pr-2",
+                    e.bl_awb_no.trim()
+                      ? "text-zinc-600 dark:text-zinc-300 font-mono"
+                      : "text-red-500 font-semibold",
+                  )}
+                >
+                  {e.bl_awb_no.trim() || "missing"}
+                </span>
+                <span className="text-[11px] font-bold text-red-500 text-right whitespace-nowrap">
+                  {e.days_pending}d
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
